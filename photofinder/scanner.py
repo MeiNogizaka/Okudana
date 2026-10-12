@@ -38,6 +38,8 @@ PREVIEW_EDGE = 1600
 #      埋め込みを SigLIP base (768d/256px) → SigLIP2 so400m (1152d/384px) に変更
 #      (精度優先、detector.py/ml.py)。次元変更で vectors.faiss も作り直しになる
 #      (vectors.py の次元不一致チェック参照) ため全写真の再エンコードが必要
+# カラーパレットの作り直しは ML_VERSION を上げない。palette.PALETTE_VERSION
+# を上げると、次回スキャンでパレット行だけを作り直す（docs/palette.md）
 ML_VERSION = 10
 BIRD_CROP_PAD = 1.2  # bird bbox をこの倍率に広げて切り出す（周辺文脈を含める）
 
@@ -47,7 +49,7 @@ BIRD_CROP_PAD = 1.2  # bird bbox をこの倍率に広げて切り出す（周�
 @dataclass
 class ScanStatus:
     running: bool = False
-    phase: str = "idle"            # scan | extract | flush | idle
+    phase: str = "idle"            # scan | extract | palette | flush | idle
     current_root: str = ""
     pending: int = 0
     total: int = 0                 # 今回の抽出対象総数 (done + pending の初期値)
@@ -64,7 +66,7 @@ class ScanStatus:
 
     def eta_seconds(self) -> float | None:
         """残り推定秒。抽出を1件以上終えていれば実測レートから算出。"""
-        if self.phase != "extract" or self.done == 0 or self.started_at == 0:
+        if self.phase not in ("extract", "palette") or self.done == 0 or self.started_at == 0:
             return None
         elapsed = time.time() - self.started_at
         rate = self.done / elapsed  # 件/秒
@@ -401,6 +403,13 @@ def extract_one(db: sqlite3.Connection, photo_id: int, path: Path,
         if not (cur and cur["poi_source"] == "manual"):
             db.execute("DELETE FROM geo WHERE photo_id=?", (photo_id,))
     update_fts(db, photo_id)
+    # パレットは ML 失敗とは切り離す。失敗しても検索状態は complete のままにし、
+    # 行が無ければ次回スキャンのパレット差分がやり直す。
+    try:
+        from .palette import extract_palette, save_palette
+        save_palette(db, photo_id, extract_palette(work))
+    except Exception:
+        log.exception("palette failed: %s", path)
     db.commit()
 
 
@@ -463,6 +472,69 @@ def get_or_make_preview(db: sqlite3.Connection, photo_id: int,
     img.thumbnail((PREVIEW_EDGE, PREVIEW_EDGE))
     img.save(out, "WEBP", quality=85)
     return out
+
+
+def _open_rgb_file(path: Path) -> Image.Image:
+    with Image.open(path) as im:
+        img = im.convert("RGB")
+        img.load()
+        return img
+
+
+def _palette_source(xxhash: str, src: Path, data_dir: Path) -> Image.Image | None:
+    """取り込み済み写真はサムネイル（なければプレビュー）だけを読む。
+
+    RAW 原本の開き直しを避ける。どちらも無いときだけ原本にフォールバックする。
+    """
+    for kind in ("thumbs", "previews"):
+        cached = data_dir / kind / xxhash[:2] / f"{xxhash}.webp"
+        if cached.exists():
+            return _open_rgb_file(cached)
+    if src.exists():
+        return _open_working_image(src)
+    return None
+
+
+def _backfill_palettes(db: sqlite3.Connection, data_dir: Path) -> None:
+    """パレット行が無い、または算法版が古い写真だけを埋める。
+
+    extract_one は呼ばない。ML_VERSION も動かさない。
+    """
+    from .palette import PALETTE_VERSION, extract_palette, save_palette
+
+    rows = db.execute(
+        """SELECT p.id, p.xxhash, p.path, r.path AS root_path
+           FROM photos p
+           JOIN roots r ON r.id = p.root_id
+           LEFT JOIN photo_palette pal ON pal.photo_id = p.id
+           WHERE p.deleted=0 AND p.index_state='complete'
+             AND (pal.photo_id IS NULL OR pal.version < ?)""",
+        (PALETTE_VERSION,),
+    ).fetchall()
+    if not rows:
+        return
+    STATUS.phase = "palette"
+    STATUS.total = len(rows)
+    STATUS.pending = len(rows)
+    STATUS.done = 0
+    STATUS.started_at = time.time()
+    for row in rows:
+        if STATUS.cancel_requested:
+            STATUS.cancelled = True
+            break
+        src = Path(row["root_path"]) / row["path"]
+        try:
+            img = _palette_source(row["xxhash"], src, data_dir)
+            if img is None:
+                raise FileNotFoundError(src)
+            save_palette(db, row["id"], extract_palette(img))
+            db.commit()
+        except Exception as e:
+            log.exception("palette backfill failed: %s", src)
+            db.rollback()
+            STATUS.errors.append(f"{src.name}: palette: {e}")
+        STATUS.done += 1
+        STATUS.pending -= 1
 
 
 # ------------------------------------------------------------ 実行入口 -----
@@ -546,6 +618,9 @@ def scan_all(db: sqlite3.Connection, data_dir: Path,
                     db.commit()
             STATUS.done += 1
             STATUS.pending -= 1
+
+        if not STATUS.cancel_requested:
+            _backfill_palettes(db, data_dir)
 
         if vstore is not None:
             STATUS.phase = "flush"

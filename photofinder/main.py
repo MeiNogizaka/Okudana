@@ -29,6 +29,7 @@ from . import backup as backup_mod
 from . import fts, ml, scanner
 from . import __version__
 from .db import open_db
+from .palette import colors_from_json
 from .paths import data_dir
 from .vectors import VectorStore
 
@@ -382,6 +383,9 @@ def photo_detail(photo_id: int):
            FROM photo_posts WHERE photo_id=? ORDER BY created_at DESC""",
         (photo_id,),
     ).fetchall()
+    palette_row = db.execute(
+        "SELECT colors_json FROM photo_palette WHERE photo_id=?", (photo_id,)
+    ).fetchone()
     exif = {}
     if e:
         exif = {
@@ -420,6 +424,7 @@ def photo_detail(photo_id: int):
         "ocr": [{"text": o["text"], "conf": o["conf"]} for o in ocr_rows],
         "tags": [dict(t) for t in tags],
         "posts": [dict(r) for r in post_rows],
+        "palette": colors_from_json(palette_row["colors_json"]) if palette_row else None,
     }
 
 
@@ -915,7 +920,7 @@ def delete_root(root_id: int):
 # ================================================================ settings ==
 
 # 真偽値として扱う設定キーの一覧 (PATCH で受け付けるキーもここで制限)
-BOOL_SETTINGS = {"scan_on_startup"}
+BOOL_SETTINGS = {"scan_on_startup", "show_palette"}
 
 
 def get_setting(key: str, default: str = "") -> str:
@@ -1416,6 +1421,7 @@ def index_status():
     ).fetchone()["c"]
     return scanner.STATUS.snapshot() | {
         "indexed_total": total,
+        "version": __version__,
         "vectors": vstore.count,
         "ml_available": ml.runtime.available,
         # 実際に使われている実行プロバイダ (CUDAExecutionProvider=GPU / CPUExecutionProvider=CPU)。

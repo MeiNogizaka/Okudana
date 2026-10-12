@@ -12,7 +12,7 @@
 |---|---|---|
 | GET | `/search` | ハイブリッド検索（自然言語 + フィルタ）。`order=asc\|desc` で時系列並び順切替。`posted=true\|false` で投稿リンク（プラットフォーム問わず）の有無を絞り込み（省略時は全件）。`exported=true\|false` で書き出し済みか否かを絞り込み（省略時は全件）。`exported=true` かつ `q` が空（ブラウズ時）は撮影日時ではなく書き出し日時で並び替え（`order` で新しい順/古い順を切替、既定は最近書き出した順） |
 | POST | `/search/by-image` | 画像類似検索・原本特定（multipart） |
-| GET | `/photos/{id}` | 写真詳細（EXIF・タグ・検出・OCR・GEO） |
+| GET | `/photos/{id}` | 写真詳細（EXIF・タグ・検出・OCR・GEO・カラーパレット） |
 | GET | `/photos/{id}/thumb` | サムネ WebP。クライアント側（`thumb_url`）が `?h={xxhash}` を付与する（内容アドレス化。サーバは `h` を検証・要求しない＝無くても200を返すが、同じ id でも中身が変わればハッシュも変わるURLにしないと `Cache-Control: immutable` で古い画像がキャッシュに残る） |
 | GET | `/photos/{id}/preview` | 1600px プレビュー WebP。thumb と同様、クライアント側で `?h={xxhash}` を付与する（サーバ未検証） |
 | GET | `/photos/{id}/file` | 原本ファイル |
@@ -33,7 +33,7 @@
 | POST | `/index/cancel` | 実行中スキャンに停止を要求（未処理分は次回スキャンで自動再開） |
 | GET | `/index/status` | 進捗スナップショット（`total`・`eta_seconds`・`rate_per_min`・`cancel_requested`・`cancelled` 等。UI は 2 秒ポーリング） |
 | POST | `/index/rebuild-vectors` | ベクトル索引を再構築（重複・削除済みベクトルを除去） |
-| GET | `/settings` / PATCH `/settings` | アプリ設定（`scan_on_startup`）。未設定キーは全て既定値 `true` として返る |
+| GET | `/settings` / PATCH `/settings` | アプリ設定（`scan_on_startup`, `show_palette`）。未設定キーは全て既定値 `true` として返る。`show_palette` はレビュー画面のカラーパレット表示 |
 | POST | `/shutdown` | アプリを終了する（設定画面の「終了」ボタンから呼ばれる。応答を返してから `os._exit()`。Dockerでは`docker stop`と実質等価だが、UIからの明示終了手段として維持） |
 | GET | `/geo/poi-status` | OSM POI データの取得状況（県別件数・取得日、`pref="manual"` はカスタム地点） |
 | POST | `/geo/refresh-poi` | POI 更新後、GPS 持ち全写真へ場所名を再適用（画像再解析なし） |
@@ -148,9 +148,16 @@
       "caption_snippet": "鴨川で見かけたカワセミ", "source": "manual",
       "platform": "x", "platform_label": null, "note": null,
       "created_at": "2026-07-11 04:40:25" }
+  ],
+  "palette": [
+    { "hex": "#3A6B4C", "ratio": 0.42, "name": "緑",
+      "temperature": "涼しい", "weight": "中くらいの重さ", "activity": "穏やか",
+      "hue_note": null }
   ]
 }
 ```
+
+`palette` は未作成なら `null`。`ratio` は画素の割合で、端の色を捨てるため合計が 1 未満になることがある。`hue_note` は彩度が十分なときだけ文字列、それ以外は `null`。印象文の組み立ては [palette.md](palette.md)。
 
 ## SNS投稿リンク・重複投稿防止 (`/photos/{id}/posts*`)
 

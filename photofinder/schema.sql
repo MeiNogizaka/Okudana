@@ -2,7 +2,7 @@
 -- M1 では embedding/FTS/検出系テーブルも作成しておく（M2 以降で使用）
 
 CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT);
-INSERT OR IGNORE INTO schema_meta VALUES ('schema_version', '7');
+INSERT OR IGNORE INTO schema_meta VALUES ('schema_version', '8');
 
 -- アプリ設定 (key-value)。既定値はここで播種し、変更は PATCH /api/settings
 CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -134,3 +134,12 @@ CREATE TABLE IF NOT EXISTS photo_posts (
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_photo_posts_photo ON photo_posts(photo_id);
+
+-- カラーパレット。1写真1行。心理効果の文章は入れない（表示時に hex から組む）。
+-- version は palette.PALETTE_VERSION。ML の ml_version とは別。
+CREATE TABLE IF NOT EXISTS photo_palette (
+    photo_id    INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+    version     INTEGER NOT NULL,
+    colors_json TEXT NOT NULL,   -- [{"hex":"#RRGGBB","ratio":0.42}, ...] 最大5
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);

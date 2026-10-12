@@ -28,7 +28,9 @@
     border-bottom:1px solid var(--line); flex:none;
     position:relative; z-index:5;
   }
-  header h1 { font-size:15px; margin:0 12px 0 0; color:var(--accent); }
+  header .brand { display:flex; align-items:baseline; gap:8px; margin-right:12px; }
+  header h1 { font-size:15px; margin:0; color:var(--accent); }
+  header .ver { font-size:11px; color:var(--ink2); letter-spacing:.02em; }
   #qDrop { flex:1; max-width:560px; position:relative; }
   #q {
     width:100%; background:var(--card); border:1px solid var(--line);
@@ -203,6 +205,24 @@
   #lightboxDlg::backdrop { background:rgba(0,0,0,.85); }
   #lightboxDlg .lb-body { position:relative; display:flex; align-items:center; justify-content:center; }
   #lightboxDlg img { display:block; max-width:100%; max-height:88vh; object-fit:contain; margin:0 auto; }
+  #lightboxDlg.has-palette img { max-height:68vh; }
+  #lightboxDlg .lb-foot {
+    position:absolute; left:0; right:0; bottom:0; color:#fff;
+    background:linear-gradient(transparent, rgba(0,0,0,.88) 32%);
+  }
+  #lightboxDlg .lb-palette[hidden] { display:none; }
+  #lightboxDlg .lb-palette {
+    display:flex; flex-wrap:wrap; gap:10px 16px; justify-content:center;
+    padding:12px 16px 0; text-align:left;
+  }
+  #lightboxDlg .lb-swatch { display:flex; gap:8px; min-width:168px; max-width:240px; font-size:11px; }
+  #lightboxDlg .lb-swatch i {
+    width:28px; height:28px; border-radius:4px; flex:none; margin-top:2px;
+    border:1px solid rgba(255,255,255,.4);
+  }
+  #lightboxDlg .lb-swatch b { font-family:ui-monospace, monospace; font-weight:600; letter-spacing:.02em; }
+  #lightboxDlg .lb-axes { color:rgba(255,255,255,.88); }
+  #lightboxDlg .lb-note { color:rgba(255,255,255,.72); }
   #lightboxDlg .lb-close, #lightboxDlg .lb-nav {
     position:absolute; background:rgba(20,25,28,.55); color:#fff; border:0;
     border-radius:50%; width:38px; height:38px; font-size:18px; line-height:1;
@@ -213,8 +233,7 @@
   #lightboxDlg .lb-next { right:10px; top:50%; transform:translateY(-50%); }
   #lightboxDlg .lb-nav:disabled { opacity:.25; cursor:default; }
   #lightboxDlg .lb-caption {
-    position:absolute; left:0; right:0; bottom:0; padding:8px 14px;
-    background:linear-gradient(transparent, rgba(0,0,0,.75)); color:#fff; font-size:12px;
+    padding:8px 14px 10px; color:#fff; font-size:12px;
     text-align:center; word-break:break-all;
   }
   /* テキスト系入力のみ全幅にする (チェックボックス/スライダーに当てると
@@ -275,7 +294,10 @@
 <body>
 
 <header>
-  <h1>PhotoFinder</h1>
+  <div class="brand">
+    <h1>PhotoFinder</h1>
+    <span id="appVersion" class="ver"></span>
+  </div>
   <div id="qDrop">
     <input id="q" type="search" placeholder="自然言語で検索（例: 青い鳥 / 紅葉の寺）— 画像をドロップ/貼り付けで原本検索" autocomplete="off">
   </div>
@@ -392,6 +414,17 @@
     </label>
     <p style="font-size:11.5px; color:var(--ink2); margin:6px 0 0 24px">
       オフの場合、スキャンは「今すぐスキャン」ボタンを押したときのみ実行されます
+    </p>
+  </div>
+
+  <p class="lbl" style="margin-top:16px">表示</p>
+  <div style="font-size:13px">
+    <label style="display:flex; gap:8px; align-items:center; cursor:pointer">
+      <input id="setShowPalette" type="checkbox">
+      レビュー画面にカラーパレットを表示
+    </label>
+    <p style="font-size:11.5px; color:var(--ink2); margin:6px 0 0 24px">
+      ダブルクリックで開く画面に、最大5色のカラーコードと印象を出します。未作成の写真には出ません
     </p>
   </div>
   <p class="lbl" style="margin-top:16px">場所データ (OSM POI)</p>
@@ -639,7 +672,10 @@
     <button class="lb-nav lb-prev" title="前の写真 (←)" onclick="lightboxNav(-1)">‹</button>
     <img id="lbImg" alt="">
     <button class="lb-nav lb-next" title="次の写真 (→)" onclick="lightboxNav(1)">›</button>
-    <div class="lb-caption" id="lbCaption"></div>
+    <div class="lb-foot">
+      <div class="lb-palette" id="lbPalette" hidden></div>
+      <div class="lb-caption" id="lbCaption"></div>
+    </div>
   </div>
 </dialog>
 
@@ -682,6 +718,12 @@ async function api(path, opts) {
   }
   return res.json();
 }
+
+let showPalette = true;
+api("/settings").then(s => { showPalette = !!s.show_palette; }).catch(() => {});
+api("/index/status").then(s => {
+  if (s.version) $("appVersion").textContent = "v" + s.version;
+}).catch(() => {});
 
 let sortOrder = "desc";  // 時系列の並び順 (ブラウズ時)
 let postedFilter = null;  // 投稿状況の絞り込み: null=全て / true=投稿済み / false=未投稿
@@ -1050,7 +1092,33 @@ function closePanel() {
 // --- ライトボックス (原寸表示 + 前後移動) ---
 let lightboxId = null;
 
-function openLightbox(id) {
+function renderLightboxPalette(colors) {
+  const el = $("lbPalette");
+  const dlg = $("lightboxDlg");
+  if (!showPalette || !colors || !colors.length) {
+    el.hidden = true;
+    el.innerHTML = "";
+    dlg.classList.remove("has-palette");
+    return;
+  }
+  el.hidden = false;
+  dlg.classList.add("has-palette");
+  el.innerHTML = colors.map(c => {
+    const pct = Math.round((c.ratio || 0) * 100);
+    const note = c.hue_note
+      ? `<div class="lb-note">${esc(c.hue_note)}</div>` : "";
+    return `<div class="lb-swatch">
+      <i style="background:${esc(c.hex)}"></i>
+      <div>
+        <b>${esc(c.hex)}</b> ${pct}% ${esc(c.name)}
+        <div class="lb-axes">${esc(c.temperature)} · ${esc(c.weight)} · ${esc(c.activity)}</div>
+        ${note}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+async function openLightbox(id) {
   lightboxId = id;
   const img = $("lbImg");
   img.onerror = () => { img.onerror = null; img.src = `/api/photos/${id}/preview`; };
@@ -1058,8 +1126,14 @@ function openLightbox(id) {
   const fig = document.querySelector(`#grid .thumb[data-id="${id}"]`);
   $("lbCaption").textContent = fig?.querySelector(".fname")?.textContent
     || fig?.querySelector("figcaption")?.textContent || "";
+  renderLightboxPalette(null);
   updateLightboxNavState();
   if (!$("lightboxDlg").open) $("lightboxDlg").showModal();
+  if (!showPalette) return;
+  try {
+    const p = await api("/photos/" + id);
+    if (lightboxId === id) renderLightboxPalette(p.palette);
+  } catch {}
 }
 
 function closeLightbox() {
@@ -1969,6 +2043,8 @@ async function refreshVecStatus() {
 $("settingsBtn").onclick = async () => {
   const s = await api("/settings");
   $("setScanStartup").checked = !!s.scan_on_startup;
+  $("setShowPalette").checked = !!s.show_palette;
+  showPalette = !!s.show_palette;
   $("setDlg").showModal();
   refreshRoots();
   refreshVecStatus();
@@ -2369,6 +2445,16 @@ $("setScanStartup").addEventListener("change", e => {
     body: JSON.stringify({scan_on_startup: e.target.checked}),
   });
 });
+$("setShowPalette").addEventListener("change", e => {
+  showPalette = e.target.checked;
+  api("/settings", {
+    method: "PATCH", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({show_palette: e.target.checked}),
+  });
+  if (!$("lightboxDlg").open || lightboxId == null) return;
+  if (showPalette) openLightbox(lightboxId);
+  else renderLightboxPalette(null);
+});
 $("setShutdown").addEventListener("click", async () => {
   if (!confirm("PhotoFinderを終了しますか？")) return;
   $("setShutdown").disabled = true;
@@ -2436,6 +2522,7 @@ setInterval(async () => {
       IN_DOCKER = !!s.in_docker;
       $("pOpen").hidden = IN_DOCKER;
     }
+    if (s.version) $("appVersion").textContent = "v" + s.version;
     $("statusDot").className = "dot" + (s.running ? " busy" : "");
     $("cancelBtn").hidden = !s.running || s.cancel_requested;
     $("scanBtn").hidden = s.running;
@@ -2448,7 +2535,7 @@ setInterval(async () => {
     $("setBackupRestore").title = s.running ? "スキャン中は復元できません"
       : backupBusy ? "バックアップ/復元の処理中です" : "";
 
-    if (s.running && s.phase === "extract" && s.total > 0) {
+    if (s.running && (s.phase === "extract" || s.phase === "palette") && s.total > 0) {
       $("scanProgress").hidden = false;
       const pct = Math.round(s.done_total / s.total * 100);
       $("scanBar").querySelector("i").style.width = pct + "%";
@@ -2461,6 +2548,7 @@ setInterval(async () => {
     $("statusText").textContent = s.running
       ? (s.cancel_requested ? "停止中…"
          : s.phase === "scan" ? `フォルダを走査中 — ${basename(s.current_root)}`
+         : s.phase === "palette" ? "カラーパレットを作成中"
          : s.phase === "flush" ? "索引を保存中…"
          : `インデックス作成中`)
       : (s.cancelled ? `停止しました · インデックス済 ${s.indexed_total} 枚（再開するには「今すぐスキャン」）`

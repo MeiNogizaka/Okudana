@@ -43,6 +43,11 @@ app2/photofinder (0.6.1) からのフォーク。Windows exe配布を廃止しDo
        展開前の空き容量チェック、アップロードサイズ上限
        (PHOTOFINDER_BACKUP_MAX_UPLOAD_BYTES、既定32GiB)、UIの復元中ボタン
        再有効化防止とエラー表示改善、旧週次スナップショットの起動時掃除
+0.4.0: カラーパレット。写真ごとに最大5色を OKLab k-means で抽出し
+       photo_palette へ保存（schema v8）。既存写真はサムネイルからの
+       差分だけで埋め、ML_VERSION は上げない。レビュー画面（ダブルクリック）
+       にカラーコードと、明度・彩度・色相から組んだ印象を出す。設定で表示を
+       切れる。手順は docs/palette.md
 """
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"

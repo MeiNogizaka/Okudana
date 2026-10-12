@@ -17,6 +17,7 @@ erDiagram
     PHOTOS ||--o| PHOTOS_FTS : indexed_by
     DETECTIONS ||--o| BIRD_IDS : refined_by
     PHOTOS ||--o{ PHOTO_POSTS : linked_to
+    PHOTOS ||--o| PHOTO_PALETTE : has
 
     ROOTS {
         int id PK
@@ -126,6 +127,12 @@ erDiagram
         text note
         text created_at
     }
+    PHOTO_PALETTE {
+        int photo_id PK_FK
+        int version "palette.PALETTE_VERSION。ml_versionとは別"
+        text colors_json "最大5色。hexと画素数比のみ。印象文は保存しない"
+        text updated_at
+    }
 ```
 
 ## SQLite DDL
@@ -144,6 +151,7 @@ erDiagram
 | v5 | photo_posts 追加（X投稿リンク・重複投稿警告機能。ALTER不要のCREATE TABLE IF NOT EXISTSのみのため _migrate() への追加コードなし） |
 | v6 | photo_posts.platform/platform_label 追加（X以外のSNS投稿リンクにも対応）。photos.exported_at 追加（書き出し済みマーク表示用） |
 | v7 | app_settings から backup_auto を削除（週次自動スナップショットをフルバックアップ/復元に置き換え、参照されなくなったため） |
+| v8 | photo_palette 追加（カラーパレット。最大5色の hex と割合。印象文は保存しない。手順は [palette.md](palette.md)） |
 
 ER 図との差分に気づいたら schema.sql を正としてください。
 

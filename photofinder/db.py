@@ -169,6 +169,12 @@ def _migrate(db: sqlite3.Connection) -> None:
         db.execute("DELETE FROM app_settings WHERE key='backup_auto'")
         db.execute("UPDATE schema_meta SET value='7' WHERE key='schema_version'")
         db.commit()
+        version = 7
+    if version and version < 8:
+        # v7 → v8: photo_palette。CREATE TABLE IF NOT EXISTS は schema.sql 側。
+        # 既存写真の行はスキャン時のパレット差分で埋める（ML 再抽出はしない）。
+        db.execute("UPDATE schema_meta SET value='8' WHERE key='schema_version'")
+        db.commit()
 
 
 def _has(db: sqlite3.Connection, table: str) -> bool:

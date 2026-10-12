@@ -154,6 +154,15 @@ on mismatch (logged as a warning). The zero-shot banks in `bird.py`/`colors.py`
 future embedding-model swap that changes `DIM` needs `scanner.ML_VERSION` bumped too (so the backfill
 mechanism re-encodes every photo).
 
+**Color palettes do not use `ML_VERSION`.** `photofinder/palette.py` stores up to five
+OKLab k-means colors in `photo_palette` (`PALETTE_VERSION`, schema v8). Bumping
+`ML_VERSION` re-runs YOLO/OCR/SigLIP for every photo — palette-only changes must bump
+`PALETTE_VERSION` instead, which the next scan backfills from the existing 320px thumbnail.
+Do not put palette colors into `photo_tags` or FTS. The bird color tags in `colors.py`
+are a different feature. Impression text (temperature / weight / activity / hue note) is
+computed at read time from the stored `#RRGGBB` and is not in the database. See
+[docs/palette.md](docs/palette.md).
+
 **Full backup/restore (`photofinder/backup.py`, `POST /api/backup/full`/`full-restore`) replaces the
 old DB-only weekly snapshot — and must restart the process, not hot-swap.** `VectorStore` (above)
 loads `vectors.faiss` into memory exactly once, at process startup, and never re-reads it from disk
