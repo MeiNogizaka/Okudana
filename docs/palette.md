@@ -96,9 +96,19 @@
 
 ## 表示
 
-設定 `show_palette`（既定は表示する）。設定画面の「レビュー画面にカラーパレットを表示」。
+レビュー画面ではパレットを画像の外に置く。画像には重ねない。表示中はダイアログを画面内の高さに固定し、画像を縮めて下の帯、または右の列の分を空ける。ファイル名は画像の下端に重ねたままにする。
 
-オンのとき、レビュー画面は `GET /api/photos/{id}` の `palette` を下端に出す。1色は、色見本、`#RRGGBB`、割合、色名、3語、あれば一文。未作成、または設定オフのときは帯を出さない。
+設定 `palette_layout`:
+
+| 値 | 配置 |
+|---|---|
+| `horizontal`（既定） | 色を横に並べ、画像の下に置く |
+| `vertical` | 色を縦に並べ、画像の右に置く |
+| `hidden` | 出さない |
+
+`palette_note`（既定は表示する）は、表示しているときだけ効く。オンなら温度・重さ・活動の3語と、色相の一文を出す。オフなら色見本、`#RRGGBB`、割合、色名だけ。
+
+未作成の写真には帯も列も出さない。以前の `show_palette=0` は、`palette_layout` が未保存のあいだ `hidden` として読む。
 
 ## 触る場所
 
@@ -107,5 +117,5 @@
 | `photofinder/palette.py` | 抽出、保存、印象文 |
 | `photofinder/schema.sql`, `db.py` | 表と v7→v8 |
 | `photofinder/scanner.py` | `extract_one` と、サムネイルからの差分 |
-| `photofinder/main.py` | 詳細 API と `show_palette` |
+| `photofinder/main.py` | 詳細 API と `palette_layout` / `palette_note` |
 | `photofinder/static/index.html` | レビュー画面と設定 |

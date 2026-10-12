@@ -203,19 +203,47 @@
     background:#000; border:0;
   }
   #lightboxDlg::backdrop { background:rgba(0,0,0,.85); }
-  #lightboxDlg .lb-body { position:relative; display:flex; align-items:center; justify-content:center; }
-  #lightboxDlg img { display:block; max-width:100%; max-height:88vh; object-fit:contain; margin:0 auto; }
-  #lightboxDlg.has-palette img { max-height:68vh; }
-  #lightboxDlg .lb-foot {
-    position:absolute; left:0; right:0; bottom:0; color:#fff;
-    background:linear-gradient(transparent, rgba(0,0,0,.88) 32%);
+  /* [open] を付けないと、閉じた dialog の display:none より優先して見えたままになる */
+  #lightboxDlg[open].palette-horizontal,
+  #lightboxDlg[open].palette-vertical {
+    display:flex; flex-direction:column;
+    height:calc(100vh - 2.5rem); max-height:calc(100vh - 2.5rem); overflow:hidden;
   }
+  #lightboxDlg .lb-body { display:flex; flex-direction:column; min-height:0; }
+  #lightboxDlg[open].palette-horizontal .lb-body,
+  #lightboxDlg[open].palette-vertical .lb-body { flex:1 1 auto; height:100%; }
+  #lightboxDlg .lb-main {
+    display:flex; flex-direction:column; min-height:0; min-width:0;
+  }
+  #lightboxDlg[open].palette-horizontal .lb-main,
+  #lightboxDlg[open].palette-vertical .lb-main { flex:1 1 auto; }
+  #lightboxDlg .lb-stage {
+    position:relative; min-width:0; min-height:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #lightboxDlg[open].palette-horizontal .lb-stage,
+  #lightboxDlg[open].palette-vertical .lb-stage { flex:1 1 auto; min-height:24vh; }
+  #lightboxDlg img { display:block; max-width:100%; max-height:88vh; object-fit:contain; }
+  /* 画像は段の中に絶対配置し、パレットの高さでは押し広げない */
+  #lightboxDlg.palette-horizontal img,
+  #lightboxDlg.palette-vertical img {
+    position:absolute; inset:0; width:100%; height:100%; margin:auto;
+    max-width:100%; max-height:100%; object-fit:contain;
+  }
+  #lightboxDlg.palette-vertical .lb-main { flex-direction:row; align-items:stretch; }
   #lightboxDlg .lb-palette[hidden] { display:none; }
-  #lightboxDlg .lb-palette {
-    display:flex; flex-wrap:wrap; gap:10px 16px; justify-content:center;
-    padding:12px 16px 0; text-align:left;
+  #lightboxDlg.palette-horizontal .lb-palette {
+    display:flex; flex-direction:row; flex-wrap:wrap; justify-content:center;
+    align-content:flex-start; gap:10px 16px; flex:none; max-height:34vh; overflow:auto;
+    padding:10px 16px 12px; background:#0c0c0c; color:#fff;
   }
-  #lightboxDlg .lb-swatch { display:flex; gap:8px; min-width:168px; max-width:240px; font-size:11px; }
+  #lightboxDlg.palette-vertical .lb-palette {
+    display:flex; flex-direction:column; gap:12px; flex:none; align-self:stretch;
+    width:min(280px, 34vw); min-height:0; overflow:auto;
+    padding:12px 14px; background:#0c0c0c; color:#fff; box-sizing:border-box;
+  }
+  #lightboxDlg .lb-swatch { display:flex; gap:8px; min-width:160px; max-width:240px; font-size:11px; text-align:left; }
+  #lightboxDlg.palette-vertical .lb-swatch { max-width:none; }
   #lightboxDlg .lb-swatch i {
     width:28px; height:28px; border-radius:4px; flex:none; margin-top:2px;
     border:1px solid rgba(255,255,255,.4);
@@ -228,22 +256,26 @@
     border-radius:50%; width:38px; height:38px; font-size:18px; line-height:1;
     display:flex; align-items:center; justify-content:center; cursor:pointer;
   }
-  #lightboxDlg .lb-close { top:10px; right:10px; }
-  #lightboxDlg .lb-prev { left:10px; top:50%; transform:translateY(-50%); }
-  #lightboxDlg .lb-next { right:10px; top:50%; transform:translateY(-50%); }
+  #lightboxDlg .lb-close { top:10px; right:10px; z-index:2; }
+  #lightboxDlg .lb-prev { left:10px; top:50%; transform:translateY(-50%); z-index:2; }
+  #lightboxDlg .lb-next { right:10px; top:50%; transform:translateY(-50%); z-index:2; }
   #lightboxDlg .lb-nav:disabled { opacity:.25; cursor:default; }
   #lightboxDlg .lb-caption {
-    padding:8px 14px 10px; color:#fff; font-size:12px;
+    position:absolute; left:0; right:0; bottom:0; z-index:1; pointer-events:none;
+    padding:22px 14px 10px; color:#fff; font-size:12px;
     text-align:center; word-break:break-all;
+    background:linear-gradient(transparent, rgba(0,0,0,.88) 42%);
   }
   /* テキスト系入力のみ全幅にする (チェックボックス/スライダーに当てると
      ボックスが全幅に伸びて中央に描画され、ラベル文が端に追いやられる) */
-  dialog input:not([type=checkbox]):not([type=range]) {
+  dialog input:not([type=checkbox]):not([type=range]):not([type=radio]) {
     width:100%; margin:4px 0 12px; background:var(--paper);
     border:1px solid var(--line); border-radius:6px; padding:7px 10px;
     color:var(--ink); font:inherit;
   }
-  dialog input[type=checkbox] { width:auto; margin:0; flex:none; accent-color:var(--accent); }
+  dialog input[type=checkbox], dialog input[type=radio] {
+    width:auto; margin:0; flex:none; accent-color:var(--accent);
+  }
   dialog .roots-list {
     display:grid; gap:6px; margin:8px 0; max-height:180px; overflow-y:auto;
   }
@@ -417,14 +449,26 @@
     </p>
   </div>
 
-  <p class="lbl" style="margin-top:16px">表示</p>
-  <div style="font-size:13px">
+  <p class="lbl" style="margin-top:16px">カラーパレット</p>
+  <div style="font-size:13px; display:grid; gap:6px">
     <label style="display:flex; gap:8px; align-items:center; cursor:pointer">
-      <input id="setShowPalette" type="checkbox">
-      レビュー画面にカラーパレットを表示
+      <input type="radio" name="paletteLayout" value="horizontal">
+      横並び（画像の下）
     </label>
-    <p style="font-size:11.5px; color:var(--ink2); margin:6px 0 0 24px">
-      ダブルクリックで開く画面に、最大5色のカラーコードと印象を出します。未作成の写真には出ません
+    <label style="display:flex; gap:8px; align-items:center; cursor:pointer">
+      <input type="radio" name="paletteLayout" value="vertical">
+      縦並び（画像の右）
+    </label>
+    <label style="display:flex; gap:8px; align-items:center; cursor:pointer">
+      <input type="radio" name="paletteLayout" value="hidden">
+      非表示
+    </label>
+    <label id="setPaletteNoteLabel" style="display:flex; gap:8px; align-items:center; cursor:pointer; margin-top:4px">
+      <input id="setPaletteNote" type="checkbox">
+      説明文を表示
+    </label>
+    <p style="font-size:11.5px; color:var(--ink2); margin:0 0 0 24px">
+      説明文は温度・重さ・活動と、色相の一文です。オフのときは色見本、カラーコード、割合、色名を出します
     </p>
   </div>
   <p class="lbl" style="margin-top:16px">場所データ (OSM POI)</p>
@@ -668,13 +712,15 @@
 
 <dialog id="lightboxDlg">
   <div class="lb-body">
-    <button class="lb-close" title="閉じる (Esc)" onclick="closeLightbox()">✕</button>
-    <button class="lb-nav lb-prev" title="前の写真 (←)" onclick="lightboxNav(-1)">‹</button>
-    <img id="lbImg" alt="">
-    <button class="lb-nav lb-next" title="次の写真 (→)" onclick="lightboxNav(1)">›</button>
-    <div class="lb-foot">
+    <div class="lb-main">
+      <div class="lb-stage">
+        <button class="lb-close" title="閉じる (Esc)" onclick="closeLightbox()">✕</button>
+        <button class="lb-nav lb-prev" title="前の写真 (←)" onclick="lightboxNav(-1)">‹</button>
+        <img id="lbImg" alt="">
+        <button class="lb-nav lb-next" title="次の写真 (→)" onclick="lightboxNav(1)">›</button>
+        <div class="lb-caption" id="lbCaption"></div>
+      </div>
       <div class="lb-palette" id="lbPalette" hidden></div>
-      <div class="lb-caption" id="lbCaption"></div>
     </div>
   </div>
 </dialog>
@@ -719,8 +765,17 @@ async function api(path, opts) {
   return res.json();
 }
 
-let showPalette = true;
-api("/settings").then(s => { showPalette = !!s.show_palette; }).catch(() => {});
+let paletteLayout = "horizontal"; // horizontal | vertical | hidden
+let paletteNote = true;
+function applyPaletteSettings(s) {
+  if (s.palette_layout === "vertical" || s.palette_layout === "hidden" || s.palette_layout === "horizontal")
+    paletteLayout = s.palette_layout;
+  paletteNote = !!s.palette_note;
+}
+api("/settings").then(s => {
+  applyPaletteSettings(s);
+  refreshOpenPalette();
+}).catch(() => {});
 api("/index/status").then(s => {
   if (s.version) $("appVersion").textContent = "v" + s.version;
 }).catch(() => {});
@@ -1092,30 +1147,51 @@ function closePanel() {
 // --- ライトボックス (原寸表示 + 前後移動) ---
 let lightboxId = null;
 
+let lightboxColors = null;
+
 function renderLightboxPalette(colors) {
   const el = $("lbPalette");
   const dlg = $("lightboxDlg");
-  if (!showPalette || !colors || !colors.length) {
+  dlg.classList.remove("palette-horizontal", "palette-vertical");
+  if (paletteLayout === "hidden" || !colors || !colors.length) {
     el.hidden = true;
     el.innerHTML = "";
-    dlg.classList.remove("has-palette");
     return;
   }
+  dlg.classList.add(paletteLayout === "vertical" ? "palette-vertical" : "palette-horizontal");
   el.hidden = false;
-  dlg.classList.add("has-palette");
   el.innerHTML = colors.map(c => {
     const pct = Math.round((c.ratio || 0) * 100);
-    const note = c.hue_note
-      ? `<div class="lb-note">${esc(c.hue_note)}</div>` : "";
+    const explain = paletteNote
+      ? `<div class="lb-axes">${esc(c.temperature)} · ${esc(c.weight)} · ${esc(c.activity)}</div>`
+        + (c.hue_note ? `<div class="lb-note">${esc(c.hue_note)}</div>` : "")
+      : "";
     return `<div class="lb-swatch">
       <i style="background:${esc(c.hex)}"></i>
       <div>
         <b>${esc(c.hex)}</b> ${pct}% ${esc(c.name)}
-        <div class="lb-axes">${esc(c.temperature)} · ${esc(c.weight)} · ${esc(c.activity)}</div>
-        ${note}
+        ${explain}
       </div>
     </div>`;
   }).join("");
+}
+
+function refreshOpenPalette() {
+  if (!$("lightboxDlg").open || lightboxId == null) return;
+  if (paletteLayout === "hidden") {
+    renderLightboxPalette(null);
+    return;
+  }
+  if (lightboxColors) {
+    renderLightboxPalette(lightboxColors);
+    return;
+  }
+  const id = lightboxId;
+  api("/photos/" + id).then(p => {
+    if (lightboxId !== id) return;
+    lightboxColors = p.palette;
+    renderLightboxPalette(lightboxColors);
+  }).catch(() => {});
 }
 
 async function openLightbox(id) {
@@ -1126,13 +1202,16 @@ async function openLightbox(id) {
   const fig = document.querySelector(`#grid .thumb[data-id="${id}"]`);
   $("lbCaption").textContent = fig?.querySelector(".fname")?.textContent
     || fig?.querySelector("figcaption")?.textContent || "";
+  lightboxColors = null;
   renderLightboxPalette(null);
   updateLightboxNavState();
   if (!$("lightboxDlg").open) $("lightboxDlg").showModal();
-  if (!showPalette) return;
+  if (paletteLayout === "hidden") return;
   try {
     const p = await api("/photos/" + id);
-    if (lightboxId === id) renderLightboxPalette(p.palette);
+    if (lightboxId !== id) return;
+    lightboxColors = p.palette;
+    renderLightboxPalette(lightboxColors);
   } catch {}
 }
 
@@ -2043,8 +2122,12 @@ async function refreshVecStatus() {
 $("settingsBtn").onclick = async () => {
   const s = await api("/settings");
   $("setScanStartup").checked = !!s.scan_on_startup;
-  $("setShowPalette").checked = !!s.show_palette;
-  showPalette = !!s.show_palette;
+  applyPaletteSettings(s);
+  document.querySelectorAll('input[name="paletteLayout"]').forEach(el => {
+    el.checked = el.value === paletteLayout;
+  });
+  $("setPaletteNote").checked = paletteNote;
+  syncPaletteNoteControl();
   $("setDlg").showModal();
   refreshRoots();
   refreshVecStatus();
@@ -2445,15 +2528,29 @@ $("setScanStartup").addEventListener("change", e => {
     body: JSON.stringify({scan_on_startup: e.target.checked}),
   });
 });
-$("setShowPalette").addEventListener("change", e => {
-  showPalette = e.target.checked;
+function syncPaletteNoteControl() {
+  const off = paletteLayout === "hidden";
+  $("setPaletteNote").disabled = off;
+  $("setPaletteNoteLabel").style.opacity = off ? ".45" : "";
+}
+function savePaletteSettings() {
   api("/settings", {
     method: "PATCH", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({show_palette: e.target.checked}),
+    body: JSON.stringify({palette_layout: paletteLayout, palette_note: paletteNote}),
   });
-  if (!$("lightboxDlg").open || lightboxId == null) return;
-  if (showPalette) openLightbox(lightboxId);
-  else renderLightboxPalette(null);
+  syncPaletteNoteControl();
+  refreshOpenPalette();
+}
+document.querySelectorAll('input[name="paletteLayout"]').forEach(el => {
+  el.addEventListener("change", () => {
+    if (!el.checked) return;
+    paletteLayout = el.value;
+    savePaletteSettings();
+  });
+});
+$("setPaletteNote").addEventListener("change", e => {
+  paletteNote = e.target.checked;
+  savePaletteSettings();
 });
 $("setShutdown").addEventListener("click", async () => {
   if (!confirm("PhotoFinderを終了しますか？")) return;

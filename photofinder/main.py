@@ -920,7 +920,9 @@ def delete_root(root_id: int):
 # ================================================================ settings ==
 
 # 真偽値として扱う設定キーの一覧 (PATCH で受け付けるキーもここで制限)
-BOOL_SETTINGS = {"scan_on_startup", "show_palette"}
+BOOL_SETTINGS = {"scan_on_startup", "palette_note"}
+# 列挙値。palette_layout はレビュー画面のカラーパレット配置
+ENUM_SETTINGS = {"palette_layout": {"horizontal", "vertical", "hidden"}}
 
 
 def get_setting(key: str, default: str = "") -> str:
@@ -935,7 +937,15 @@ def settings():
     # rows に無いキーを単に省略すると、フロントの初期表示が false 相当になり
     # 実際のデフォルト挙動 (有効) と食い違ってしまうため、ここで明示的に補う
     result = {k: rows.get(k, "1") == "1" for k in BOOL_SETTINGS}
-    result.update({k: v for k, v in rows.items() if k not in BOOL_SETTINGS})
+    # 旧 show_palette（真偽値）は palette_layout が未保存のときだけ読む
+    if "palette_layout" in rows and rows["palette_layout"] in ENUM_SETTINGS["palette_layout"]:
+        result["palette_layout"] = rows["palette_layout"]
+    elif rows.get("show_palette") == "0":
+        result["palette_layout"] = "hidden"
+    else:
+        result["palette_layout"] = "horizontal"
+    known = BOOL_SETTINGS | set(ENUM_SETTINGS) | {"show_palette"}
+    result.update({k: v for k, v in rows.items() if k not in known})
     return result
 
 
@@ -943,10 +953,16 @@ def settings():
 def patch_settings(body: dict = Body(...)):
     with _db_write:
         for key, value in body.items():
-            if key not in BOOL_SETTINGS:
+            if key in BOOL_SETTINGS:
+                stored = "1" if value else "0"
+            elif key in ENUM_SETTINGS:
+                if value not in ENUM_SETTINGS[key]:
+                    raise HTTPException(422, f"invalid value for {key}")
+                stored = value
+            else:
                 raise HTTPException(422, f"unknown setting: {key}")
             db.execute("INSERT OR REPLACE INTO app_settings VALUES (?,?)",
-                       (key, "1" if value else "0"))
+                       (key, stored))
         db.commit()
     return settings()
 

@@ -33,7 +33,7 @@
 | POST | `/index/cancel` | 実行中スキャンに停止を要求（未処理分は次回スキャンで自動再開） |
 | GET | `/index/status` | 進捗スナップショット（`total`・`eta_seconds`・`rate_per_min`・`cancel_requested`・`cancelled` 等。UI は 2 秒ポーリング） |
 | POST | `/index/rebuild-vectors` | ベクトル索引を再構築（重複・削除済みベクトルを除去） |
-| GET | `/settings` / PATCH `/settings` | アプリ設定（`scan_on_startup`, `show_palette`）。未設定キーは全て既定値 `true` として返る。`show_palette` はレビュー画面のカラーパレット表示 |
+| GET | `/settings` / PATCH `/settings` | アプリ設定。真偽値は `scan_on_startup` と `palette_note`（未設定は `true`）。`palette_layout` は `horizontal`（既定）/ `vertical` / `hidden`。旧 `show_palette=0` だけが残っている場合は `hidden` として読む |
 | POST | `/shutdown` | アプリを終了する（設定画面の「終了」ボタンから呼ばれる。応答を返してから `os._exit()`。Dockerでは`docker stop`と実質等価だが、UIからの明示終了手段として維持） |
 | GET | `/geo/poi-status` | OSM POI データの取得状況（県別件数・取得日、`pref="manual"` はカスタム地点） |
 | POST | `/geo/refresh-poi` | POI 更新後、GPS 持ち全写真へ場所名を再適用（画像再解析なし） |
