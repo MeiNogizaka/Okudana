@@ -239,7 +239,7 @@
 }
 ```
 
-`watermark`はテキスト透かし（`text`必須）と画像透かし（`image_data_url`必須）の**どちらか一方**を指定する:
+`watermark`はテキスト透かし（`text`必須）と画像透かし（`image_data_url`必須）の**どちらか一方**を指定する。省略または `null` は透かしなし（書き出し画面の「なし」）:
 
 ```json
 { "watermark": { "image_data_url": "data:image/png;base64,...", "image_size_pct": 20,

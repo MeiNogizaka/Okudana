@@ -641,8 +641,9 @@
     <div style="width:248px; font-size:12px">
       <p class="lbl" style="margin-top:0">透かし</p>
       <div style="display:flex; gap:6px; margin-bottom:6px" id="expWmMode">
-        <button class="ghost" data-m="text" style="font-size:11px;padding:3px 10px;flex:1">テキスト</button>
-        <button class="ghost" data-m="image" style="font-size:11px;padding:3px 10px;flex:1">画像</button>
+        <button class="ghost" data-m="text" style="font-size:11px;padding:3px 8px;flex:1;white-space:nowrap">テキスト</button>
+        <button class="ghost" data-m="image" style="font-size:11px;padding:3px 8px;flex:1;white-space:nowrap">画像</button>
+        <button class="ghost" data-m="none" style="font-size:11px;padding:3px 8px;flex:1;white-space:nowrap">なし</button>
       </div>
       <div id="expWmTextControls">
         <input id="expWm" placeholder="© your name" style="width:100%; margin:0 0 6px">
@@ -664,13 +665,15 @@
           <span id="expWmImgSizeVal" style="flex:none; width:32px; text-align:right">20%</span>
         </div>
       </div>
-      <div style="margin-bottom:6px">
-        <div id="expWmPosGrid" class="wmpos-grid" title="表示位置"></div>
-      </div>
-      <div style="display:flex; gap:6px; align-items:center; font-size:11px; color:var(--ink2)">
-        <span style="flex:none">透過率</span>
-        <input id="expWmOp" type="range" min="0.1" max="1" step="0.05" value="0.6" style="flex:1">
-        <span id="expWmOpVal" style="flex:none; width:32px; text-align:right">60%</span>
+      <div id="expWmPlacement">
+        <div style="margin-bottom:6px">
+          <div id="expWmPosGrid" class="wmpos-grid" title="表示位置"></div>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center; font-size:11px; color:var(--ink2)">
+          <span style="flex:none">透過率</span>
+          <input id="expWmOp" type="range" min="0.1" max="1" step="0.05" value="0.6" style="flex:1">
+          <span id="expWmOpVal" style="flex:none; width:32px; text-align:right">60%</span>
+        </div>
       </div>
       <p class="lbl">プライバシー</p>
       <label><input id="expGps" type="checkbox" checked> GPS・機材情報を除去</label>
@@ -1622,9 +1625,11 @@ async function openExport(photo) {
 }
 
 function setWmMode(mode) {
-  exp.wmMode = mode === "image" ? "image" : "text";
+  exp.wmMode = mode === "image" || mode === "none" ? mode : "text";
   $("expWmTextControls").hidden = exp.wmMode !== "text";
   $("expWmImageControls").hidden = exp.wmMode !== "image";
+  // 位置と透過率は透かしを載せるときだけ意味がある
+  $("expWmPlacement").hidden = exp.wmMode === "none";
   [...$("expWmMode").children].forEach(b => b.classList.toggle("ghost", b.dataset.m !== exp.wmMode));
 }
 
@@ -1982,6 +1987,7 @@ $("expWmImgFile").addEventListener("change", () => {
 });
 
 function buildWatermarkPayload() {
+  if (exp.wmMode === "none") return null;
   if (exp.wmMode === "image") {
     if (!exp.wmImageDataUrl) return null;
     return {
