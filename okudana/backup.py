@@ -1,7 +1,7 @@
 """フルバックアップ: データディレクトリ全体のzip書き出しと復元。
 
 方針:
-  - DB (photofinder.db) は VACUUM main INTO で圧縮しながら書き出す
+  - DB (okudana.db) は VACUUM main INTO で圧縮しながら書き出す
     (旧・週次スナップショット機能と同じ手法を流用 — 専用接続でスキャン
     スレッドのトランザクションと衝突せず、WAL下でも一貫したスナップショットが
     取れる)
@@ -32,7 +32,7 @@ Docker の restart policy で再起動」パターンを、データディレク
 
 途中クラッシュ対策: 退避開始前に `backup/RESTORE_IN_PROGRESS` マーカーを書き、
 成功またはロールバック完了時に消す。起動時にマーカーが残っている、または
-`photofinder.db` が無く `before_restore_*` だけがある場合は空DBを作らずに
+`okudana.db` も旧名 `photofinder.db` も無く `before_restore_*` だけがある場合は空DBを作らずに
 最新の退避を書き戻す (recover_incomplete_restore)。
 
 バックアップ作成と復元は同じ非ブロッキングロックで直列化し、スキャン等の
@@ -51,10 +51,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-log = logging.getLogger("photofinder.backup")
+log = logging.getLogger("okudana.backup")
 
 MANIFEST_NAME = "backup_manifest.json"
-DB_ARCNAME = "photofinder.db"
+DB_ARCNAME = "okudana.db"
+# 0.5.0 までのバックアップzipとデータディレクトリが使っていたファイル名。
+# 復元と起動時の改名だけがこの文字列を読む。
+LEGACY_DB_ARCNAME = "photofinder.db"
+_DB_ARC_NAMES = (DB_ARCNAME, LEGACY_DB_ARCNAME)
 BACKUP_FORMAT_VERSION = 1
 RESTORE_MARKER_NAME = "RESTORE_IN_PROGRESS"
 # 展開時の余裕 (inode/ディレクトリ・一時ファイル用)。非圧縮合計に加算する
@@ -71,7 +75,10 @@ _OPTIONAL_FILES = [
 ]
 _DIRS = ["thumbs", "previews"]
 # 退避時のみ対象 (バックアップzipには通常含めない WAL サイドカー)
-_STAGE_EXTRA = ["photofinder.db-wal", "photofinder.db-shm"]
+_STAGE_EXTRA = [
+    "okudana.db-wal", "okudana.db-shm",
+    "photofinder.db-wal", "photofinder.db-shm",
+]
 
 _lock = threading.Lock()
 _current_op: str | None = None  # "backup" | "restore" | None
@@ -135,7 +142,7 @@ STATUS = RestoreStatus()
 
 def _is_allowed_member(name: str) -> bool:
     """バックアップzipに含めてよい相対パスか。backup/ や tmp/ への書き込みを拒否。"""
-    if name in (MANIFEST_NAME, DB_ARCNAME) or name in _OPTIONAL_FILES:
+    if name in (MANIFEST_NAME, *_DB_ARC_NAMES) or name in _OPTIONAL_FILES:
         return True
     # ディレクトリエントリ (末尾 /) は thumbs/ previews/ のみ許可
     stripped = name.rstrip("/")
@@ -161,7 +168,7 @@ def build_full_backup(data_dir: Path, out_path: Path) -> dict:
     n_files = 0
     with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zf:
         db_tmp = out_path.with_suffix(".db.tmp")
-        conn = sqlite3.connect(data_dir / "photofinder.db")
+        conn = sqlite3.connect(data_dir / DB_ARCNAME)
         try:
             conn.execute("PRAGMA busy_timeout=30000")
             conn.execute("VACUUM main INTO ?", (str(db_tmp),))
@@ -200,7 +207,7 @@ def build_full_backup(data_dir: Path, out_path: Path) -> dict:
 def validate_backup_zip(zf: zipfile.ZipFile, data_dir: Path) -> dict:
     """アップロードされたバックアップzipを検証する。問題があれば ValueError。
 
-    - backup_manifest.json / photofinder.db が存在すること
+    - backup_manifest.json と okudana.db（または旧 photofinder.db）が存在すること
     - format_version が対応バージョンであること
     - メンバーが allowlist (DB / オプションファイル / thumbs|previews 配下) のみ
     - 各メンバーの展開先パスが data_dir の外を指さないこと (zip-slip対策)
@@ -211,8 +218,11 @@ def validate_backup_zip(zf: zipfile.ZipFile, data_dir: Path) -> dict:
     names = set(zf.namelist())
     if MANIFEST_NAME not in names:
         raise ValueError(f"{MANIFEST_NAME} not found - not an Okudana backup")
-    if DB_ARCNAME not in names:
-        raise ValueError(f"{DB_ARCNAME} not found in backup")
+    if not any(name in names for name in _DB_ARC_NAMES):
+        raise ValueError(
+            f"{DB_ARCNAME} not found in backup "
+            f"(legacy name {LEGACY_DB_ARCNAME} is also accepted)"
+        )
 
     try:
         manifest = json.loads(zf.read(MANIFEST_NAME).decode("utf-8"))
@@ -299,7 +309,7 @@ def stage_aside_current_data(data_dir: Path) -> Path:
     staged = bdir / f"before_restore_{ts}"
     staged.mkdir(parents=True)
 
-    items = [DB_ARCNAME] + _STAGE_EXTRA + _OPTIONAL_FILES + _DIRS
+    items = list(_DB_ARC_NAMES) + _STAGE_EXTRA + _OPTIONAL_FILES + _DIRS
     moved: list[str] = []
     try:
         for name in items:
@@ -349,6 +359,39 @@ def rollback_staged(data_dir: Path, staged_dir: Path) -> None:
         )
 
 
+def adopt_legacy_database(data_dir: Path) -> bool:
+    """旧ファイル名 photofinder.db（と -wal / -shm）を okudana.db へ改名する。
+
+    okudana.db が既にあるときは改名しない。空の新しい DB で実データを
+    上書きしないため。サイドカーを本体より先に改名するので、途中で落ちても
+    次回、本体が旧名のままなら続きから改名できる。戻り値は本体を改名したとき True。
+    """
+    new_db = data_dir / DB_ARCNAME
+    old_db = data_dir / LEGACY_DB_ARCNAME
+    if new_db.exists():
+        if old_db.exists():
+            log.warning(
+                "both %s and %s exist under %s; opening %s and leaving %s in place",
+                DB_ARCNAME, LEGACY_DB_ARCNAME, data_dir,
+                DB_ARCNAME, LEGACY_DB_ARCNAME,
+            )
+        return False
+    if not old_db.exists():
+        return False
+    for suffix in ("-wal", "-shm"):
+        src = data_dir / f"{LEGACY_DB_ARCNAME}{suffix}"
+        dst = data_dir / f"{DB_ARCNAME}{suffix}"
+        if not src.exists():
+            continue
+        if dst.exists():
+            log.warning("leaving %s in place; %s already exists", src.name, dst.name)
+            continue
+        src.rename(dst)
+    old_db.rename(new_db)
+    log.warning("renamed %s to %s under %s", LEGACY_DB_ARCNAME, DB_ARCNAME, data_dir)
+    return True
+
+
 def extract_full_backup(data_dir: Path, zip_path: Path) -> None:
     """検証済みのバックアップzipを data_dir へ展開する (呼び出し前に stage_aside 済みであること)。"""
     with zipfile.ZipFile(zip_path) as zf:
@@ -358,19 +401,22 @@ def extract_full_backup(data_dir: Path, zip_path: Path) -> None:
                 continue
             # allowlist は validate 済み。extract は data_dir 直下へ
             zf.extract(info, data_dir)
+        adopt_legacy_database(data_dir)
 
 
 def recover_incomplete_restore(data_dir: Path) -> str | None:
     """起動時に呼ぶ。中断された復元の痕跡があれば最新 before_restore_* を書き戻す。
 
     戻り値: 復旧した場合はその説明文字列、不要なら None。
-    open_db の前に呼ぶこと — 空の photofinder.db を新規作成してしまうのを防ぐ。
+    open_db の前、かつ adopt_legacy_database の前に呼ぶこと — 空の
+    okudana.db を新規作成してしまうのを防ぐ。旧名のファイルが残っている
+    場合はライブ DB ありとみなし、成功済みの復元を巻き戻さない。
     """
     bdir = backup_dir(data_dir)
     marker = _restore_marker_path(data_dir)
     stages = sorted(bdir.glob("before_restore_*"), reverse=True) if bdir.is_dir() else []
-    live_db = data_dir / DB_ARCNAME
-    needs = marker.exists() or (not live_db.exists() and bool(stages))
+    has_live = any((data_dir / name).exists() for name in _DB_ARC_NAMES)
+    needs = marker.exists() or (not has_live and bool(stages))
     if not needs:
         return None
     if not stages:
@@ -384,7 +430,7 @@ def recover_incomplete_restore(data_dir: Path) -> str | None:
     log.warning(
         "incomplete restore detected (marker=%s, live_db_exists=%s) - "
         "rolling back from %s",
-        marker.exists(), live_db.exists(), staged,
+        marker.exists(), has_live, staged,
     )
     rollback_staged(data_dir, staged)
     _clear_restore_marker(data_dir)
@@ -414,7 +460,7 @@ def run_full_restore(data_dir: Path, zip_path: Path, db) -> None:
     """バックグラウンドスレッドから呼ぶ想定。結果は STATUS に反映する。
 
     db は .execute() を持つ接続 (main.py の LockedConnection)。生きたWALの
-    内容を確定させてから退避するため (空でないWALを残したままphotofinder.db
+    内容を確定させてから退避するため (空でないWALを残したまま okudana.db
     本体だけ退避すると、退避先を後で使う際に古い内容が混ざりうる)。
 
     呼び出し前に try_acquire("restore") でロックを取得済みであること。os._exit は

@@ -22,7 +22,7 @@ from pathlib import Path
 
 from .paths import data_dir
 
-log = logging.getLogger("photofinder.poi_fetch")
+log = logging.getLogger("okudana.poi_fetch")
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 UA = {"User-Agent": "Okudana-personal/0.1 (local photo indexer)"}

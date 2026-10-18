@@ -37,7 +37,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-log = logging.getLogger("photofinder.archive_import")
+log = logging.getLogger("okudana.archive_import")
 
 ARCHIVE_MATCH_MIN_SCORE = 0.75  # main.py の SIMILAR_POST_MIN_SCORE と同じ暫定値
 

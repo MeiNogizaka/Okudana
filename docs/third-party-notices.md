@@ -36,7 +36,7 @@ requirements.txt にもDockerイメージにも含まれない（変換手順は
 `tools/download_models.py` の docstring 参照）。
 
 AGPL-3.0 は「配布」に加え、**ネットワーク経由でソフトウェアと対話できる状態にした
-時点で**ソース開示義務が生じる「ネットワーク条項」（第13条）を持つ。photofinderは
+時点で**ソース開示義務が生じる「ネットワーク条項」（第13条）を持つ。Okudanaは
 Dockerの`docker-compose.yml`で既定`127.0.0.1`バインドのみに制限しているが、
 `ports:`の設定を変えてLAN/インターネットに公開した場合はこの条項の対象になる点に
 留意すること（docs/docker.md参照）。
@@ -65,7 +65,7 @@ Dockerの`docker-compose.yml`で既定`127.0.0.1`バインドのみに制限し�
 | rapidocr-onnxruntime | Apache-2.0 | 同梱の検出/文字方向分類モデルも同ライセンス（PaddleOCR系、下記参照） |
 | reverse_geocoder | LGPL | パッケージ本体のコードのライセンス。同梱データ（GeoNames）は別途 CC BY 4.0（下記「データ」節） |
 | rawpy | MIT | 同梱の`libraw_r.so`（LibRaw、動的リンク）はLGPL-2.1。下記「rawpy / LibRaw について」参照 |
-| exifread | BSD-3-Clause | RAWファイルのEXIF抽出フォールバック用（`photofinder/exif_utils.py`） |
+| exifread | BSD-3-Clause | RAWファイルのEXIF抽出フォールバック用（`okudana/exif_utils.py`） |
 
 ### pillow-heif の GPLv2 表記について
 
@@ -94,7 +94,7 @@ x265 の `COPYING`（GPL-2.0全文、`docs/third-party-licenses/x265-COPYING.txt
 
 ## rawpy / LibRaw について
 
-RAW対応 (`photofinder/raw_utils.py`) で追加した `rawpy` (MIT) は `libraw_r.so`
+RAW対応 (`okudana/raw_utils.py`) で追加した `rawpy` (MIT) は `libraw_r.so`
 （LibRaw の「redistributable」ビルド、GPL専用のデモザイクアルゴリズムを含まない
 構成）を動的リンクで同梱する。LibRaw自体は **LGPL-2.1** で配布されており
 （`rawpy`のwheelに同梱される`LICENSE.LibRaw`で確認済み。CDDL-1.0とのデュアル
@@ -105,7 +105,7 @@ LGPL-2.1はリンクする側（Okudana）にAGPL/GPL化を要求しない。既
 
 ## Dockerイメージに同梱するフォント
 
-透かし書き出し機能 (`photofinder/export.py` の `FONTS`) 用にaptパッケージとして
+透かし書き出し機能 (`okudana/export.py` の `FONTS`) 用にaptパッケージとして
 Dockerイメージへ同梱している。Pythonパッケージではないため上記の表には含めず、
 ここに独立して記録する。
 
@@ -125,7 +125,7 @@ OFL-1.1 (SIL Open Font License) は同梱・再配布・改変を明示的に許
 | YOLOv8x 物体検出 | Ultralytics公式 `yolov8x.pt`（GitHub Releases）から `tools/download_models.py` がその場でONNXへエクスポート（非公式HF再配布には依存しない） | **AGPL-3.0**（Ultralytics公式方針、上記参照） | Okudana全体をAGPL-3.0とすることで対応済み。2026-07-14: 精度優先でnano→mediumへ変更、2026-07-19: GPU (CUDA) 対応と合わせて medium→x へ再変更（docs/design.md差分参照）。取得元は一貫して一次情報（公式.pt→ローカル変換） |
 | 日本語OCR認識（japan_PP-OCRv3） | `cycloneboy/japan_PP-OCRv3_rec_infer`（HF） | Apache-2.0 の可能性が高い（PaddleOCR本体がApache-2.0のため） | 再配布元にライセンス表記なし。要一次情報での裏取り推奨 |
 | OCR検出/文字方向分類モデル | `rapidocr-onnxruntime` パッケージ同梱（PaddleOCR系） | Apache-2.0（パッケージ自体がApache-2.0） | |
-| 野鳥種名・色タグ推定 | 追加モデル無し（SigLIP埋め込みのゼロショット流用のみ） | 上記SigLIPに同じ | `photofinder/species_ja.py` の種リストはこのプロジェクト独自の著作物 |
+| 野鳥種名・色タグ推定 | 追加モデル無し（SigLIP埋め込みのゼロショット流用のみ） | 上記SigLIPに同じ | `okudana/species_ja.py` の種リストはこのプロジェクト独自の著作物 |
 
 ## 外部データ
 

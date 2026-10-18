@@ -11,23 +11,26 @@ computed once at index time, served from a single FastAPI process. No cloud serv
 binds to `127.0.0.1` only by default. See [README.md](README.md) for the full feature list and
 design rationale.
 
-**Names that stay.** The product and Docker images are Okudana (`okudana:cpu`,
-`okudana:cuda`, `okudana:model-fetch`). Compose project `name:` is `okudana`;
-volume names are exactly `okudana_data` and `okudana_models` (explicit `name:`,
-so the project prefix is not applied twice). The Python package directory stays
-`photofinder/` (`uvicorn photofinder.main:app`), the SQLite file stays
-`photofinder.db`, and environment variables stay `PHOTOFINDER_*`. `app2/photofinder`
-is the unchanged fork point. PhotoFinder was this product's display name through
-0.4.x. Do not rename the package, the database file, or those environment
-variables to match the new product name.
+**Names.** The product, package, and Docker images are Okudana (`okudana:cpu`,
+`okudana:cuda`, `okudana:model-fetch`; `uvicorn okudana.main:app`). Compose
+project `name:` is `okudana`; volume names are exactly `okudana_data` and
+`okudana_models`. The SQLite file is `okudana.db`. Environment variables are
+`OKUDANA_*`. `app2/photofinder` is the unchanged fork point, a different project.
+PhotoFinder was this product's display name through 0.4.x. On startup,
+`adopt_legacy_database()` renames a leftover `photofinder.db` (and its `-wal` /
+`-shm`) to `okudana.db` before the database is opened. Backup zips may still
+contain `photofinder.db`; restore accepts that member and renames it.
+`paths.env()` reads `OKUDANA_*` first and `PHOTOFINDER_*` only when the new
+name is unset. Do not delete those readers until every existing data directory
+has been opened once with 0.6.0 or later.
 
 **What changed from app2/photofinder**: distribution moved from a Windows PyInstaller exe to
 **Docker only** (CPU and CUDA image variants from one `Dockerfile`, see [docs/docker.md](docs/docker.md));
-added **RAW file support** (`photofinder/raw_utils.py`, embedded-preview extraction via `rawpy`,
+added **RAW file support** (`okudana/raw_utils.py`, embedded-preview extraction via `rawpy`,
 previously unimplemented); tuned **FAISS/RRF search** (HNSW `efConstruction`/`efSearch`, dynamic
 top-k widening — implements the design intent that `docs/design.md` §9.2 always described but the
 old `main.py` never did); added a **dataset export** endpoint (`POST /api/export/dataset`,
-`photofinder/dataset_export.py`) that turns human-confirmed/rejected tags into a training/eval
+`okudana/dataset_export.py`) that turns human-confirmed/rejected tags into a training/eval
 JSONL+image zip. DirectML (Windows GPU/APU) support was removed entirely — Windows is no longer a
 target platform at all, not even for local dev.
 
@@ -59,7 +62,7 @@ python3 -m venv .venv
 .venv/bin/pip uninstall onnxruntime -y
 .venv/bin/pip install -r requirements-gpu.txt        # onnxruntime-gpu + nvidia-cudnn-cu13
 
-.venv/bin/python -m uvicorn photofinder.main:app --port 8686
+.venv/bin/python -m uvicorn okudana.main:app --port 8686
 
 # Generate synthetic test photos (EXIF/GPS) or fetch real ones for manual testing
 .venv/bin/python tools/make_sample_photos.py
@@ -83,8 +86,8 @@ the move/tombstone edge cases only surface with real filesystem timing and conte
 
 ## Architecture
 
-**Single process, three stores.** One FastAPI process (`photofinder/main.py`) holds everything:
-SQLite (WAL mode, `photofinder/schema.sql` is the sole DDL source of truth — never duplicate DDL
+**Single process, three stores.** One FastAPI process (`okudana/main.py`) holds everything:
+SQLite (WAL mode, `okudana/schema.sql` is the sole DDL source of truth — never duplicate DDL
 into docs) for metadata + FTS5 full-text, FAISS (`IndexHNSWFlat`, file-backed) for embedding vectors,
 and the filesystem for WebP thumbnails/previews. FAISS vector IDs are `photos.id` directly — no
 separate mapping table. A second, independent SQLite file (`data/poi.db`) holds OSM POI data and is
@@ -96,12 +99,12 @@ FAISS/SQLite state and race on writes.
 **FAISS's C++ file I/O is not Unicode-path-safe on Windows.** This was found on real hardware while
 app2/photofinder still targeted Windows (non-ASCII paths like Japanese "デスクトップ" broke
 `faiss.read_index`/`write_index`). Okudana has no Windows target at all, so the trigger no
-longer applies, but `photofinder/vectors.py`'s `_read_index`/`_write_index` helpers (which route
+longer applies, but `okudana/vectors.py`'s `_read_index`/`_write_index` helpers (which route
 through Python's own `open()` + `PyCallbackIOReader`/`Writer` instead of a raw path string) are kept
 as-is since they're harmless and correct on Linux too — never call `faiss.read_index`/`write_index`
 with a raw path for any future FAISS file I/O added here.
 
-**Diff-based incremental scanner** (`photofinder/scanner.py`): walks each registered root, compares
+**Diff-based incremental scanner** (`okudana/scanner.py`): walks each registered root, compares
 `(size, mtime)` against the DB to skip unchanged files cheaply, and only computes an xxHash (head+tail
 1MB) when something looks different. A hash match at a new path is treated as a move/rename (record
 reused, no re-extraction); a hash match at an already-occupied path purges the occupant first (avoids
@@ -111,7 +114,7 @@ CASCADE on SQLite virtual tables). `photos.ml_version` records which pipeline ve
 a photo, so bumping `ML_VERSION` in `scanner.py` triggers automatic backfill on the next scan. Extract
 failures are rolled back and marked `index_state='error'` for retry, not left half-committed.
 
-**RAW support (`photofinder/raw_utils.py`) reuses the shared working-image pipeline, not a parallel
+**RAW support (`okudana/raw_utils.py`) reuses the shared working-image pipeline, not a parallel
 one.** `scanner.py`'s `_open_working_image(path)` is the single decision point for "how do I get a
 decodable PIL Image from this file" — it branches on `raw_utils.is_raw(ext)` (a curated default set,
 `RAW_EXTS`, not a hard allowlist; `roots.ext_filter` is free-text so users can add more) and both
@@ -123,7 +126,7 @@ containers), then falls back to `exifread` only when the file `is_raw()` and pie
 CR3 (ISO-BMFF/QuickTime container, unlike CR2's TIFF) may still come back with empty EXIF even though
 the image itself decodes fine — a known, accepted gap. `photos.width`/`height` for RAW files reflect
 the *embedded preview's* resolution, not the sensor's native resolution — documented in `schema.sql`.
-`photofinder/export.py`'s watermark/crop export flow got the same RAW branch (`raw_utils` import) so
+`okudana/export.py`'s watermark/crop export flow got the same RAW branch (`raw_utils` import) so
 exporting a RAW-sourced photo doesn't hit the old `Image.open()`-only path and crash.
 
 **Search is RRF fusion**, not a single index: FTS5 (BM25 over SudachiPy-tokenized Japanese text) and
@@ -145,7 +148,7 @@ the vector leg of candidates. `vectors.py`'s `search()` derives `efSearch` from 
 filtered browsing.
 
 **ML is all ONNX, GPU-accelerated where available (CUDA only now), zero-shot where possible.**
-`photofinder/ml.py` holds the SigLIP2 session (shared by image and text encoding, 1152d, 384px,
+`okudana/ml.py` holds the SigLIP2 session (shared by image and text encoding, 1152d, 384px,
 `google/siglip2-so400m-patch14-384`, WebLI 109-language training covers Japanese); `detector.py` is
 YOLOv8x for object tags; bird species (`bird.py`) and color tags (`colors.py`) are *not* trained
 classifiers — they're SigLIP2 zero-shot similarity against a curated text list (`species_ja.py`),
@@ -164,7 +167,7 @@ on mismatch (logged as a warning). The zero-shot banks in `bird.py`/`colors.py`
 future embedding-model swap that changes `DIM` needs `scanner.ML_VERSION` bumped too (so the backfill
 mechanism re-encodes every photo).
 
-**Color palettes do not use `ML_VERSION`.** `photofinder/palette.py` stores up to five
+**Color palettes do not use `ML_VERSION`.** `okudana/palette.py` stores up to five
 OKLab k-means colors in `photo_palette` (`PALETTE_VERSION`, schema v8). Bumping
 `ML_VERSION` re-runs YOLO/OCR/SigLIP for every photo — palette-only changes must bump
 `PALETTE_VERSION` instead, which the next scan backfills from the existing 320px thumbnail.
@@ -173,7 +176,7 @@ are a different feature. Impression text (temperature / weight / activity / hue 
 computed at read time from the stored `#RRGGBB` and is not in the database. See
 [docs/palette.md](docs/palette.md).
 
-**Full backup/restore (`photofinder/backup.py`, `POST /api/backup/full`/`full-restore`) replaces the
+**Full backup/restore (`okudana/backup.py`, `POST /api/backup/full`/`full-restore`) replaces the
 old DB-only weekly snapshot — and must restart the process, not hot-swap.** `VectorStore` (above)
 loads `vectors.faiss` into memory exactly once, at process startup, and never re-reads it from disk
 afterward — restoring it by overwriting the on-disk file while the process is alive would leave the
@@ -190,12 +193,12 @@ generation is deleted only after the new stage completes successfully. A failure
 extraction rolls back via `rollback_staged()` (or partial stage undo) and leaves the process running.
 A `backup/RESTORE_IN_PROGRESS` marker is written before rename; on next startup
 `recover_incomplete_restore()` runs *before* `open_db` and rolls back if the marker is set or if
-`photofinder.db` is missing while a `before_restore_*` exists — otherwise a crashed mid-restore
+neither `okudana.db` nor a legacy `photofinder.db` exists while a `before_restore_*` does — otherwise a crashed mid-restore
 would create an empty DB and hide the real data. Upload validation (`validate_backup_zip()` —
 `format_version`, manifest + DB present, allowlisted members only, zip-slip / absolute / symlink
 guards) always runs before any live file is touched. Backup build and restore share a non-blocking
 lock (`try_acquire` / `is_busy`); scan, vector rebuild, archive import, and root-add refuse to start
-while busy. Upload size is capped by `PHOTOFINDER_BACKUP_MAX_UPLOAD_BYTES` (default 32GiB).
+while busy. Upload size is capped by `OKUDANA_BACKUP_MAX_UPLOAD_BYTES` (default 32GiB).
 
 **GPU acceleration: CUDA only, no DirectML.** `ml.py`'s `ORT_PROVIDERS = ["CUDAExecutionProvider",
 "CPUExecutionProvider"]` is reused by every ONNX session in the app (`ml.py`, `detector.py`).
@@ -246,7 +249,7 @@ different bytes over time (e.g. a file overwritten in place at the same path), t
 `?h={xxhash}` so the browser cache key changes whenever the content does. Follow this pattern for
 any new long-cached per-photo asset — don't cache-bust by `photo_id` alone.
 
-**Dataset export (`photofinder/dataset_export.py`, `POST /api/export/dataset`) treats
+**Dataset export (`okudana/dataset_export.py`, `POST /api/export/dataset`) treats
 `photo_tags.verified != 0` as ground truth — and specifically NOT `bird_ids.confirmed`.**
 `bird_ids.confirmed` is a separate column from `photo_tags.verified` that the existing ✓/✗ UI action
 (`main.py`'s `verify_tag()`) never updates — it's set once at INSERT time in `extract_one()` and
@@ -259,7 +262,7 @@ thresholds. Exported images are the existing 1600px preview WebP (`scanner.get_o
 not the original — well above SigLIP/YOLO's input resolution, and consistent with the existing
 GPS/EXIF-stripping export philosophy.
 
-**`IN_DOCKER` (`main.py`, from `PHOTOFINDER_DOCKER` env var, set by the Dockerfile) gates the
+**`IN_DOCKER` (`main.py`, from `OKUDANA_DOCKER`, falling back to `PHOTOFINDER_DOCKER`) gates the
 "open in file manager" endpoint.** A container has no desktop to open a file manager on, so
 `POST /photos/{id}/open-in-explorer` returns 501 when `IN_DOCKER` is true, and the frontend hides
 the corresponding button based on `GET /api/index/status`'s `in_docker` field. The Windows-specific
@@ -292,7 +295,7 @@ on-disk persistence of the export output.
 land in `data/` or the index.** The header control 「外部画像」 (`#extDrop`) is both
 the file picker and the drop target. Search-box drop and paste stay reverse search
 (`POST /api/search/by-image`). Flow: `POST /api/export/external` (multipart `file`,
-256MiB cap) stages one directory under the OS temp dir (`pf-export-*`, not `data/`),
+256MiB cap) stages one directory under the OS temp dir (`okudana-export-*`, not `data/`),
 decodes it with `scanner._open_working_image` so EXIF orientation and RAW embedded
 previews match `export_photo()`, and returns `{token, width, height, name}`. The
 dialog then `POST`s the same JSON as `/photos/{id}/export` to
@@ -324,7 +327,7 @@ forever. No error surfaced anywhere; the only symptom was the container never se
 don't remove it, and if you add a new service built from this Dockerfile, set an explicit `target:`
 too rather than relying on the default.
 
-**Frontend is one static HTML file** (`photofinder/static/index.html`) — vanilla JS, no build step,
+**Frontend is one static HTML file** (`okudana/static/index.html`) — vanilla JS, no build step,
 no framework. `samples/typescript/` has an unfinished React reference implementation that is *not*
 wired up to the current API; don't assume it reflects current endpoints.
 

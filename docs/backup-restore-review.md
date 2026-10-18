@@ -63,23 +63,23 @@
 
 | 変数 | 既定 | 意味 |
 |------|------|------|
-| `PHOTOFINDER_BACKUP_MAX_UPLOAD_BYTES` | `34359738368` (32GiB) | 復元 zip のアップロード上限。`0` 以下で無制限 |
+| `OKUDANA_BACKUP_MAX_UPLOAD_BYTES` | `34359738368` (32GiB) | 復元 zip のアップロード上限。`0` 以下で無制限。未設定時は旧名 `PHOTOFINDER_BACKUP_MAX_UPLOAD_BYTES` も読む |
 
 ---
 
 ## 4. 主な変更ファイル (0.3.1)
 
-- `photofinder/backup.py` — 排他・検証強化・マーカー復旧・空き容量・ステージング安全化
-- `photofinder/main.py` — 起動時 recovery、API ゲート、アップロード上限、`index/status` に `backup_busy`
-- `photofinder/static/index.html` — 復元中 UI 状態、エラー処理、説明文
-- `photofinder/__init__.py` — バージョン 0.3.1
+- `okudana/backup.py` — 排他・検証強化・マーカー復旧・空き容量・ステージング安全化
+- `okudana/main.py` — 起動時 recovery、API ゲート、アップロード上限、`index/status` に `backup_busy`
+- `okudana/static/index.html` — 復元中 UI 状態、エラー処理、説明文
+- `okudana/__init__.py` — バージョン 0.3.1
 - `docs/api-spec.md`, `docs/docker.md`, `CLAUDE.md` — 仕様追従
 
 ---
 
 ## 5. 推奨の手動確認手順
 
-1. 設定 → バックアップをダウンロード → zip が得られ、`backup_manifest.json` と `photofinder.db` が含まれること  
+1. 設定 → バックアップをダウンロード → zip が得られ、`backup_manifest.json` と `okudana.db` が含まれること。0.5.0 までの zip は中が `photofinder.db` でも復元できる  
 2. データを少し変更 → 同じ zip で復元 → 再起動後に変更前の状態に戻ること  
 3. スキャン中に復元／バックアップが 409 または UI 上無効になること  
 4. 壊した zip（manifest 欠落・`format_version` 改変・`../` パス）が拒否され、ライブデータが無傷なこと  

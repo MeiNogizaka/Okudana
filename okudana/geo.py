@@ -17,7 +17,7 @@ import threading
 from .db import LockedConnection
 from .poi_fetch import POI_DB  # 定義元は poi_fetch.py (単一の定義元)
 
-log = logging.getLogger("photofinder.geo")
+log = logging.getLogger("okudana.geo")
 POI_RADIUS_M = 150.0    # 主 POI: この距離以内のみ採用
 POI_ALT_RADIUS_M = 250.0  # 周辺 POI (検索用の別名): 少し広めに拾う
 POI_FOV_DEG = 60.0      # 撮影方位がある場合の視野 (±60°)。近距離 (<30m) では適用しない

@@ -1,6 +1,6 @@
 # Okudana データスキーマ
 
-製品名は Okudana。SQLite ファイル名は既存ボリュームとバックアップのため `photofinder.db` のまま。
+製品名は Okudana。SQLite ファイル名は `okudana.db`。0.5.0 までの `photofinder.db` は起動時に改名する。旧バックアップ zip の中のファイル名も復元時に `okudana.db` へ揃える。
 
 ストア構成: **SQLite（メタデータ + FTS5 全文）** / **FAISS（埋め込みベクトル）** / **ファイルシステム（サムネ WebP）**。
 FAISS の vector ID = `photos.id` として結合し、対応表を持たない。
@@ -139,8 +139,8 @@ erDiagram
 
 ## SQLite DDL
 
-**唯一の定義元は [photofinder/schema.sql](../photofinder/schema.sql)**（本書に DDL を複製すると
-ドリフトするため撤去）。マイグレーションは photofinder/db.py の _migrate が起動時に適用する。
+**唯一の定義元は [okudana/schema.sql](../okudana/schema.sql)**（本書に DDL を複製すると
+ドリフトするため撤去）。マイグレーションは okudana/db.py の _migrate が起動時に適用する。
 
 スキーマ版の履歴:
 
@@ -160,7 +160,7 @@ ER 図との差分に気づいたら schema.sql を正としてください。
 ## POI データベース (data/poi.db) — メイン DB とは別ファイル
 
 OSM から取得した POI（建物・スポット名）と、ユーザが手動追加したカスタム地点を格納する。
-`photofinder/poi_fetch.py` が定義元。メイン DB (`photofinder.db`) からは参照されず、
+`okudana/poi_fetch.py` が定義元。メイン DB (`okudana.db`) からは参照されず、
 `geo.py` の `poi_lookup()` が実行時に別接続で検索する（`geo.poi_name` へは値のコピーのみ保存）。
 
 ```sql
@@ -187,8 +187,8 @@ CREATE TABLE poi_meta (pref TEXT PRIMARY KEY, fetched_at TEXT NOT NULL, count IN
 | 項目 | 値 |
 |---|---|
 | ファイル | `data/vectors.faiss`（tmp 書き→rename でアトミック更新） |
-| 型 | `IndexIDMap2(IndexHNSWFlat(ml.DIM, M=32))`、〜50万枚まで。`ml.DIM`は現在1152（SigLIP2 so400m、2026-07-19〜。旧768から変更）。次元変更時は`VectorStore`が不一致を検知して自動再構築（`photofinder/vectors.py`参照） |
-| HNSWパラメータ | `efConstruction=200`（旧: FAISS既定値40のまま未調整）。`efSearch`はクエリのk（main.pyのフィルタ絞り込み強度に応じた200〜2000の動的拡張）に合わせ`max(128, min(4000, k*2))`で毎回動的設定（photofinderで追加） |
+| 型 | `IndexIDMap2(IndexHNSWFlat(ml.DIM, M=32))`、〜50万枚まで。`ml.DIM`は現在1152（SigLIP2 so400m、2026-07-19〜。旧768から変更）。次元変更時は`VectorStore`が不一致を検知して自動再構築（`okudana/vectors.py`参照） |
+| HNSWパラメータ | `efConstruction=200`（旧: FAISS既定値40のまま未調整）。`efSearch`はクエリのk（main.pyのフィルタ絞り込み強度に応じた200〜2000の動的拡張）に合わせ`max(128, min(4000, k*2))`で毎回動的設定（このフォークで追加） |
 | 距離 | 内積（ベクトルは L2 正規化済み → コサイン等価） |
 | 削除 | tombstone（`photos.deleted=1` で検索後除外）。HNSW は remove 不可のため再インデックスで同一 id が重複しうる（検索時 dedupe） |
 | 再構築 | `POST /api/index/rebuild-vectors`（設定 UI・バックアップ時オプションからも可）。既存ベクトルを reconstruct して重複・削除済み id を除去。画像の再エンコード不要 |

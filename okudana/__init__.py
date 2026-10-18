@@ -61,6 +61,11 @@ app2/photofinder (0.6.1) からのフォーク。Windows exe配布を廃止しDo
        ボリューム実名は okudana_data / okudana_models。Python パッケージ名、
        photofinder.db、環境変数 PHOTOFINDER_* は既存データを開けるように
        そのまま。0.4.x からのボリュームの移し方は docs/docker.md
+0.6.0: パッケージを okudana、DB ファイルを okudana.db、環境変数を OKUDANA_*
+       に変更。起動時に photofinder.db（-wal/-shm も）を改名する。
+       バックアップは旧ファイル名でも復元し、展開後は okudana.db に揃える。
+       OKUDANA_* が未設定のときだけ PHOTOFINDER_* を読む。ブラウザの
+       サムネサイズと書き出し設定も旧キーからコピーする
 """
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"

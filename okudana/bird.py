@@ -37,7 +37,7 @@ from PIL import Image
 from .paths import data_dir
 from .species_ja import BIRDS
 
-log = logging.getLogger("photofinder.bird")
+log = logging.getLogger("okudana.bird")
 
 CACHE_PATH = data_dir() / "species_bank.npz"
 TOPK = 3

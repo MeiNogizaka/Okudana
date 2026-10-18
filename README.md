@@ -1,6 +1,6 @@
 # Okudana — ローカル写真 自然言語検索アプリ
 
-旧名は PhotoFinder。Python パッケージ名と DB ファイル名（`photofinder.db`）は、既存データとバックアップをそのまま開けるように変えていない。Docker イメージは `okudana:cpu` / `okudana:cuda`。0.4.x からの上げ方は [docs/docker.md](docs/docker.md) の「PhotoFinder（0.4.x まで）から Okudana へ」。
+旧表示名は PhotoFinder。パッケージは `okudana`、DB ファイルは `okudana.db`、環境変数は `OKUDANA_*`。Docker イメージは `okudana:cpu` / `okudana:cuda`。0.4.x のボリュームを移す手順は [docs/docker.md](docs/docker.md) の「PhotoFinder（0.4.x まで）から Okudana へ」。起動時に旧 DB ファイル名を `okudana.db` へ改名する。
 
 PC ローカル / NAS 上の写真を **日本語の自然言語** と **画像例** で高速検索できる個人用アプリ。
 外部サービス不要・完全ローカル動作がデフォルト。軽量・軽快を最優先した設計。
@@ -21,7 +21,7 @@ PC ローカル / NAS 上の写真を **日本語の自然言語** と **画像�
 
 - **1プロセス・1ファイルDB**: バックエンドは FastAPI 単一プロセス。メタデータは SQLite、ベクトルは FAISS（ローカルファイル）。Milvus 等のサーバ型 DB は使わない。
 - **配布はDocker専用（CPU/CUDA）**: `Dockerfile` をビルド引数 `VARIANT=cpu|cuda` で2バリアントに作り分ける。CPU/GPUどちらの環境でも同じ手順で動かせる（[docs/docker.md](docs/docker.md)参照）。
-- **推論は ONNX Runtime**: SigLIP2（多言語）埋め込み・物体検出・分類器をすべて ONNX 化。CUDA が使えない環境では自動的に CPU にフォールバックする仕組み（`photofinder/ml.py`の`ORT_PROVIDERS`）を持つ。実際にどちらで動いているかは設定画面の「AI処理」で確認できる。
+- **推論は ONNX Runtime**: SigLIP2（多言語）埋め込み・物体検出・分類器をすべて ONNX 化。CUDA が使えない環境では自動的に CPU にフォールバックする仕組み（`okudana/ml.py`の`ORT_PROVIDERS`）を持つ。実際にどちらで動いているかは設定画面の「AI処理」で確認できる。
 - **重い処理はインデックス時に前払い**: 検索時は「ベクトル1本のエンコード + FAISS 検索 + SQLite フィルタ」のみ。10万枚規模で検索応答 < 200ms を目標。
 - **原本非破壊**: 写真ファイルには一切書き込まない。タグ・メタデータはすべて DB 側に保持。
 
@@ -32,7 +32,7 @@ PC ローカル / NAS 上の写真を **日本語の自然言語** と **画像�
 | 機能 | 実装方針 |
 |---|---|
 | インデックス化 | フォルダ走査 + mtime/size/xxHash による差分検出。拡張子はユーザ設定（既定 `jpg;jpeg;png;heic`。**RAW対応**、下記参照）。フォルダごとに再帰/直下のみを切替可。起動時（設定でON/OFF可）または手動ボタンで実行、途中停止/再開・フォルダ単位の再スキャンに対応 |
-| RAW対応 | `rawpy`によるカメラ埋め込みプレビュー抽出（フル現像はしない、`photofinder/raw_utils.py`）。CR2/CR3/NEF/ARW/ORF/RAF/RW2/DNG/PEF等が対象（既定セット。`ext_filter`の自由入力で追加可）。EXIFは`piexif`→（RAWで空なら）`exifread`の順に試行 |
+| RAW対応 | `rawpy`によるカメラ埋め込みプレビュー抽出（フル現像はしない、`okudana/raw_utils.py`）。CR2/CR3/NEF/ARW/ORF/RAF/RW2/DNG/PEF等が対象（既定セット。`ext_filter`の自由入力で追加可）。EXIFは`piexif`→（RAWで空なら）`exifread`の順に試行 |
 | EXIF 抽出 | 撮影日時・GPS・カメラ/レンズ・露出情報を SQLite に保存。GPS はオフライン逆ジオコーディング（GeoNames）で都道府県/市区町村に、OSM POI 近傍検索で建物・スポット名に変換 |
 | OCR | RapidOCR + japan_PP-OCRv3（ONNX, 日本語対応）。写真内テキストを全文検索対象に |
 | 物体検出 | YOLOv8x(ONNX) で 80 クラス + 信頼度をタグ化。精度優先でnano→medium→xと変更（GPU (CUDA) 動作確認済み、CPUでも可） |
@@ -81,7 +81,7 @@ okudana/
 ├── docker-compose.yml         ← cpu/cuda/setup の3プロファイル
 ├── .env.example                ← PHOTO_LIBRARY_PATH の設定例
 ├── .dockerignore
-├── photofinder/              ← 実装本体（全機能この単一パッケージに実装）
+├── okudana/              ← 実装本体（全機能この単一パッケージに実装）
 │   ├── main.py                ← FastAPI サーバ（全 REST エンドポイント）
 │   ├── scanner.py             ← 差分スキャナ + 抽出パイプライン（ML_VERSION でバックフィル制御）
 │   ├── raw_utils.py            ← RAW埋め込みプレビュー抽出 (rawpy)
@@ -133,7 +133,7 @@ okudana/
 | メタデータ/全文 | **SQLite + FTS5** (unicode61 + 分かち書き前処理) | 1ファイル・トランザクション・バックアップ容易 |
 | OCR | **RapidOCR**（検出）+ **japan_PP-OCRv3**（認識, ONNX） | 日本語対応・追加学習不要ですぐ使える |
 | 物体検出 | **YOLOv8x** (ONNX) | 精度優先。GPU (CUDA, Docker cudaバリアント) 前提のサイズ選定 |
-| 鳥種名・色タグ | **SigLIP ゼロショット**（画像embedding と種名/色のテキストembeddingの類似度）。専用分類器は学習しない | 既製の Kaggle 525 種分類器は日本の普通種（カワセミ等）を含まず近縁種に誤答したため不採用。理由と閾値設計は `photofinder/bird.py` docstring 参照 |
+| 鳥種名・色タグ | **SigLIP ゼロショット**（画像embedding と種名/色のテキストembeddingの類似度）。専用分類器は学習しない | 既製の Kaggle 525 種分類器は日本の普通種（カワセミ等）を含まず近縁種に誤答したため不採用。理由と閾値設計は `okudana/bird.py` docstring 参照 |
 | RAW | `rawpy`（実装済み） | 埋め込みプレビュー抽出のみ（フル現像はしない）。`LibRaw`(LGPL-2.1)を動的リンクで同梱 |
 | HEIC | `pillow-heif`（実装済み） | Linuxホイールも `libx265.so` を同梱（デコード専用で未使用、docs/third-party-notices.md参照） |
 | フロント | 静的 HTML + バニラ JS（ビルド不要、実装済み） | React+Vite 版は samples/typescript/ に参照実装。デスクトップ化する場合は Tauri（構想） |
@@ -232,7 +232,7 @@ python3 -m venv .venv
 .venv/bin/pip uninstall onnxruntime -y
 .venv/bin/pip install -r requirements-gpu.txt
 
-.venv/bin/python -m uvicorn photofinder.main:app --port 8686
+.venv/bin/python -m uvicorn okudana.main:app --port 8686
 
 # 動作確認用のサンプル写真（EXIF/GPS付き）を生成する場合
 .venv/bin/python tools/make_sample_photos.py

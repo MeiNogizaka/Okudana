@@ -13,7 +13,7 @@ from PIL import Image
 
 from .paths import app_root
 
-log = logging.getLogger("photofinder.ocr")
+log = logging.getLogger("okudana.ocr")
 
 MODELS_DIR = app_root() / "models" / "ocr"
 REC_MODEL = MODELS_DIR / "japan_rec.onnx"

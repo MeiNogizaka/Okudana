@@ -1,6 +1,6 @@
 """OSM POI データベースの構築・更新ツール (CLI)。
 
-実体は photofinder/poi_fetch.py に共通化（実行中サーバの設定画面からも同じ処理を呼べる）。
+実体は okudana/poi_fetch.py に共通化（実行中サーバの設定画面からも同じ処理を呼べる）。
 本 CLI はサーバを起動せずまとめて複数県を取得したい場合に使う。
 
 使い方:
@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from photofinder.poi_fetch import (  # noqa: E402
+from okudana.poi_fetch import (  # noqa: E402
     PREF_ISO, POI_DB, fetch_pref, open_poi_db, store_pref,
 )
 

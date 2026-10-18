@@ -12,7 +12,7 @@ import piexif
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from photofinder.exif_utils import build_gps_exif  # noqa: E402
+from okudana.exif_utils import build_gps_exif  # noqa: E402
 
 OUT = Path(__file__).parent.parent / "sample-photos"
 

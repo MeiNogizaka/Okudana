@@ -25,7 +25,7 @@ RRF_K = 60
 app = FastAPI(title="Okudana API")
 
 # --- リソースはプロセスで 1 度だけロード -----------------------------------
-_db = sqlite3.connect(DATA / "photofinder.db", check_same_thread=False)
+_db = sqlite3.connect(DATA / "okudana.db", check_same_thread=False)
 _db.row_factory = sqlite3.Row
 _index: faiss.Index = faiss.read_index(str(DATA / "vectors.faiss"))
 # siglip_text/siglip_image は ONNX Runtime セッション（ここでは契約のみ）

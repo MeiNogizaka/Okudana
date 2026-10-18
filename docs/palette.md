@@ -1,13 +1,13 @@
 # カラーパレット
 
 写真1枚から最大5色を取り、ダブルクリックで開くレビュー画面に出す。
-実装は `photofinder/palette.py`。しきい値の数値はそこが定義元で、この文書はそれと揃えてある。
+実装は `okudana/palette.py`。しきい値の数値はそこが定義元で、この文書はそれと揃えてある。
 
 鳥の「青い鳥」タグ（`colors.py`、SigLIP）とは別機能である。パレットは検索タグにも全文検索にも入れない。
 
 ## 保存するもの
 
-同じ `photofinder.db` の `photo_palette`（スキーマ v8）。写真1枚につき1行。
+同じ `okudana.db` の `photo_palette`（スキーマ v8）。写真1枚につき1行。
 
 | 列 | 内容 |
 |---|---|
@@ -124,8 +124,8 @@
 
 | ファイル | 役割 |
 |---|---|
-| `photofinder/palette.py` | 抽出、保存、印象文 |
-| `photofinder/schema.sql`, `db.py` | 表と v7→v8 |
-| `photofinder/scanner.py` | `extract_one` と、サムネイルからの差分 |
-| `photofinder/main.py` | 詳細 API と `palette_layout` / `palette_note` |
-| `photofinder/static/index.html` | レビュー画面と設定 |
+| `okudana/palette.py` | 抽出、保存、印象文 |
+| `okudana/schema.sql`, `db.py` | 表と v7→v8 |
+| `okudana/scanner.py` | `extract_one` と、サムネイルからの差分 |
+| `okudana/main.py` | 詳細 API と `palette_layout` / `palette_note` |
+| `okudana/static/index.html` | レビュー画面と設定 |

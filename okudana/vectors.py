@@ -34,7 +34,7 @@ import numpy as np
 
 from .ml import DIM
 
-log = logging.getLogger("photofinder.vectors")
+log = logging.getLogger("okudana.vectors")
 
 HNSW_M = 32
 HNSW_EF_CONSTRUCTION = 200

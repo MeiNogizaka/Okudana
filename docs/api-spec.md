@@ -195,7 +195,7 @@
 
 過去のツイート全件を一括で照合・登録するフェーズ2機能。設定画面からXの
 「データのアーカイブ」zip（`data/tweets.js` + `data/account.js` + `data/tweets_media/`）を
-アップロードすると、`photofinder/archive_import.py` がバックグラウンドで:
+アップロードすると、`okudana/archive_import.py` がバックグラウンドで:
 
 1. `tweets.js` を解析してツイート一覧（ID・日時・本文・添付画像ファイル名）を抽出
 2. `account.js` からアカウント名を取得できればツイートURLを `https://x.com/{handle}/status/{id}`
@@ -289,7 +289,7 @@ PNG/WebP等を`FileReader`でdata URL化したもの（デコード後8MB・4000
 ## POST /export/dataset
 
 人手タグ付け済み写真を教師/評価データセット用にJSONL+画像zipとして書き出す
-（`photofinder/dataset_export.py`）。対象は `photo_tags.verified != 0`
+（`okudana/dataset_export.py`）。対象は `photo_tags.verified != 0`
 （人手が✓確定/✗否認した行のみ、未レビューのタグは対象外）。
 
 ```json
@@ -329,7 +329,7 @@ images/{xxhash}.webp # 1600pxプレビュー (オリジナルではない。GPS/
 
 ## POST /backup/full
 
-データディレクトリ全体（`photofinder.db`は`VACUUM main INTO`で圧縮しながら書き出し、
+データディレクトリ全体（`okudana.db`は`VACUUM main INTO`で圧縮しながら書き出し、
 `vectors.faiss`・`poi.db`（+sidecar）・`species_bank.npz`・`color_bank.npz`・`thumbs/`・
 `previews/`はそのままコピー、`backup_manifest.json`同梱）をzipでダウンロード返却する。
 `tmp/`（Xアーカイブ取り込みの一時領域）と`backup/`（退避先ディレクトリ自身）は対象外。
@@ -345,7 +345,7 @@ multipart/form-data、`file`にバックアップzip（`POST /backup/full`で作
 `GET /backup/full-restore-status`をポーリングする。
 
 処理順序: ①受付時に排他ロックを取り `phase=uploading`（この時点からスキャン開始等を拒否）
-②zipを検証（`backup_manifest.json` の `format_version`、`photofinder.db` の存在、
+②zipを検証（`backup_manifest.json` の `format_version`、`okudana.db` または旧 `photofinder.db` の存在、
 メンバーが allowlist — DB/オプションファイル/`thumbs|previews` 配下 — のみ、展開先が
 `data/` 配下に収まること、絶対パス/シンボリックリンク禁止。失敗時はライブデータに触れない）
 ③展開に必要な空き容量（非圧縮合計+マージン）を確認
@@ -358,9 +358,9 @@ multipart/form-data、`file`にバックアップzip（`POST /backup/full`で作
 一度だけメモリへ読み込まれるため）。⑤が失敗した場合は④の退避を書き戻しマーカーを消し、
 プロセスは再起動せずそのまま動作を続ける。途中でプロセスが死んだ場合は次回起動時に
 `recover_incomplete_restore` がマーカー/`before_restore_*`を見て自動書き戻しする
-（空の `photofinder.db` を新規作成しない）。
+（空の `okudana.db` を新規作成しない）。
 
-アップロードサイズ上限は環境変数 `PHOTOFINDER_BACKUP_MAX_UPLOAD_BYTES`（既定 32GiB、
+アップロードサイズ上限は環境変数 `OKUDANA_BACKUP_MAX_UPLOAD_BYTES`（既定 32GiB、
 0以下で無制限）。超過時は413。スキャン実行中の409、既にバックアップ/復元実行中なら
 `{"started": false, "reason": "backup or restore already running"}`。
 
@@ -406,7 +406,7 @@ SSE (`/index/events`) は当初設計にあったが未実装（必要になれ�
 停止（`POST /index/cancel`）時、未処理の写真は `index_state='pending'` のまま残るため、
 次回スキャン（手動「今すぐスキャン」）で自動的に続きから処理される。
 
-`providers` は各ONNXモデルが実際に使っている実行プロバイダ（`photofinder/ml.py`の
+`providers` は各ONNXモデルが実際に使っている実行プロバイダ（`okudana/ml.py`の
 `ORT_PROVIDERS = ["CUDAExecutionProvider", "CPUExecutionProvider"]`のうち、実機で
 有効だった方）。各モデルは初回使用（検索・スキャン）まで遅延ロードのため、未使用のうちは
 `null`。CUDAイメージでもGPUが使えない環境（`nvidia-container-toolkit`未設定等）では

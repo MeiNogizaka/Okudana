@@ -18,7 +18,7 @@ from pathlib import Path
 import rawpy
 from PIL import Image, ImageOps
 
-log = logging.getLogger("photofinder.raw_utils")
+log = logging.getLogger("okudana.raw_utils")
 
 # scanner.py の Image.open() vs rawpy 分岐用のデフォルトセット。
 # rawpy/libraw は実際にはこれよりずっと多くの形式に対応しているが、

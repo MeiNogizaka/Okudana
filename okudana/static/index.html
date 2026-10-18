@@ -806,13 +806,18 @@ let sortOrder = "desc";  // 時系列の並び順 (ブラウズ時)
 let postedFilter = null;  // 投稿状況の絞り込み: null=全て / true=投稿済み / false=未投稿
 let exportedFilter = null;  // 書き出し状況の絞り込み: null=全て / true=書き出し済み / false=未書き出し
 
-const THUMB_SIZE_KEY = "pf_thumb_size_v1";
+const THUMB_SIZE_KEY = "okudana_thumb_size_v1";
+const THUMB_SIZE_KEY_LEGACY = "pf_thumb_size_v1";
 const THUMB_SIZES = { s: "120px", m: "180px", l: "260px" };
 const THUMB_LABELS = { s: "小", m: "中", l: "大" };
 const THUMB_ORDER = ["s", "m", "l"];
 function loadThumbSize() {
   try {
-    const v = localStorage.getItem(THUMB_SIZE_KEY);
+    let v = localStorage.getItem(THUMB_SIZE_KEY);
+    if (!v) {
+      v = localStorage.getItem(THUMB_SIZE_KEY_LEGACY);
+      if (v) localStorage.setItem(THUMB_SIZE_KEY, v);
+    }
     return THUMB_SIZES[v] ? v : "m";
   } catch { return "m"; }
 }
@@ -1480,7 +1485,8 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 // 時の写真の原寸 (photo.width/height) と突き合わせる (openExport参照)。
 // 解像度が完全一致する写真 (同じ写真の開き直し等) なら位置も含めて復元し、
 // 一致しないが枠サイズ自体は収まるなら中央寄せで復元、収まらなければ全体表示にリセットする
-const EXPORT_PREFS_KEY = "pf_export_prefs_v1";
+const EXPORT_PREFS_KEY = "okudana_export_prefs_v1";
+const EXPORT_PREFS_KEY_LEGACY = "pf_export_prefs_v1";
 const EXPORT_DEFAULTS = {
   wm: "", wmPos: "bottom-right", wmFont: "gothic", wmOp: 0.6, wmSize: 2.5,
   wmMode: "text", wmImgSize: 20,
@@ -1488,8 +1494,14 @@ const EXPORT_DEFAULTS = {
   boxPx: null,  // {x, y, w, h, origW, origH} 原寸px。nullなら全体 (未指定/前回リセット済み)
 };
 function loadExportPrefs() {
-  try { return { ...EXPORT_DEFAULTS, ...JSON.parse(localStorage.getItem(EXPORT_PREFS_KEY)) }; }
-  catch { return { ...EXPORT_DEFAULTS }; }
+  try {
+    let raw = localStorage.getItem(EXPORT_PREFS_KEY);
+    if (!raw) {
+      raw = localStorage.getItem(EXPORT_PREFS_KEY_LEGACY);
+      if (raw) localStorage.setItem(EXPORT_PREFS_KEY, raw);
+    }
+    return { ...EXPORT_DEFAULTS, ...JSON.parse(raw) };
+  } catch { return { ...EXPORT_DEFAULTS }; }
 }
 function saveExportPrefs() {
   const origW = exp.photo?.width || exp.img?.naturalWidth || 0;

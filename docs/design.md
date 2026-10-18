@@ -16,10 +16,10 @@
 | インデクサの並列化 (§1) | `ProcessPoolExecutor`（CPU数-1） | 単一バックグラウンドスレッドで逐次処理 | 個人規模（〜数百万枚でなく数万〜数十万枚）では十分な速度が出た。プロセス間のDB接続管理・エラー伝搬の複雑さを避けた |
 | リアルタイム監視 (§1, §5, §8) | Watcher コンポーネント（FSイベント）+ SSE で進捗プッシュ | 起動時スキャン（設定でON/OFF可）と手動ボタンのみ。進捗は `GET /index/status` の2秒ポーリング | ユーザ指定の仕様変更。差分スキャンが軽く手動運用で十分、watchdog固有のエッジケース対応コストが見合わないと判断（§8 に詳細） |
 | OCR エンジン (§1, §2) | PaddleOCR (ONNX変換) | RapidOCR + japan_PP-OCRv3 認識モデル | 変換済みONNXの入手性・セットアップの簡便さで選定。実写看板で日本語/英語混在文の高精度読み取りを確認済み |
-| 鳥種名推定 (§1, §7) | EfficientNetV2-S を CUB/NABirds+日本産鳥類で転移学習 | SigLIP ゼロショット（画像/種名テキストembeddingの類似度）。学習なし | 既製の Kaggle 525種分類器を試したところ日本の普通種（カワセミ等）がクラスに無く近縁種に誤答したため不採用。学習データ収集・学習コストも回避。理由は `photofinder/bird.py` docstring 参照 |
+| 鳥種名推定 (§1, §7) | EfficientNetV2-S を CUB/NABirds+日本産鳥類で転移学習 | SigLIP ゼロショット（画像/種名テキストembeddingの類似度）。学習なし | 既製の Kaggle 525種分類器を試したところ日本の普通種（カワセミ等）がクラスに無く近縁種に誤答したため不採用。学習データ収集・学習コストも回避。理由は `okudana/bird.py` docstring 参照 |
 | 建物名推定・第二手段 (§7) | ランドマーク分類器（Google Landmarks v2） | 未実装。代わりにユーザによる POI 手動管理（都道府県取得/カスタム地点追加/写真ごとの場所名編集）を実装 | 分類器は誤爆対策が難しく個人宅周辺等では実用性が低い。ユーザが直接データを補える方が確実 |
-| RAW 対応 (§2 step1) | 埋め込みプレビュー優先でデコード | 当初は未対応だった（jpg/jpeg/png/heicのみ）。**その後、当初案通りrawpy埋め込みプレビュー抽出により対応**（`photofinder/raw_utils.py`、詳細は末尾節） | 当初はJPG運用にスコープを限定していたが、後に解消 |
-| フロントエンド (§6) | React + Vite + TanStack Query/Virtual + Zustand + MapLibre | ビルド不要の単一 HTML + バニラ JS（`photofinder/static/index.html`） | 個人用途でビルドパイプラインの運用コストを避けた。React 版は `samples/typescript/` に参照実装として残すが未接続 |
+| RAW 対応 (§2 step1) | 埋め込みプレビュー優先でデコード | 当初は未対応だった（jpg/jpeg/png/heicのみ）。**その後、当初案通りrawpy埋め込みプレビュー抽出により対応**（`okudana/raw_utils.py`、詳細は末尾節） | 当初はJPG運用にスコープを限定していたが、後に解消 |
+| フロントエンド (§6) | React + Vite + TanStack Query/Virtual + Zustand + MapLibre | ビルド不要の単一 HTML + バニラ JS（`okudana/static/index.html`） | 個人用途でビルドパイプラインの運用コストを避けた。React 版は `samples/typescript/` に参照実装として残すが未接続 |
 | 地図表示 (§6 詳細パネル) | MapLibre + ローカルタイル/OSM | 未実装。場所は都道府県/市区町村/POI名のテキスト表示のみ | スコープ外。地図ウィジェットの追加は将来対応 |
 | index_state (§2 要点) | `pending / meta_done / ml_done / complete` の4段階 | `pending / error / complete` の3段階（`ml_version` 列でパイプライン版によるバックフィルを別管理） | 実装を進める中で2段階の中間状態は不要と判明。エラー状態を明示する方が運用上有用だった |
 | 性能目標 (§8) | 100枚/分/コア、10万枚規模で検索<200ms | 実写349枚での実測: 約20〜25枚/分（CPU、フルML込み）。検索応答は16〜160ms（実測） | 10万枚規模でのベンチマークは未実施。桁が大きく変わる可能性があるため参考値として扱うこと |
@@ -170,7 +170,7 @@ docs/api-spec.md 参照。設計原則:
 - `data/` ディレクトリ = 全状態
 - 設定画面から手動でフルバックアップ (DB は `VACUUM main INTO` で圧縮、FAISS索引・
   サムネ/プレビュー・poi.db等はそのままコピー) をzipでダウンロード/復元可能
-  (`photofinder/backup.py`、`POST /api/backup/full`/`full-restore`、§11 参照)
+  (`okudana/backup.py`、`POST /api/backup/full`/`full-restore`、§11 参照)
 - 復元前にライブデータを `data/backup/before_restore_<timestamp>/` へ退避 (1世代のみ保持)。
   復元後はプロセスを終了しDockerのrestart policyで再起動 (vectors.faissが起動時
   一度きりメモリへ読み込まれ、稼働中の差し替えが反映されないため)
@@ -254,7 +254,7 @@ def reverse_search(uploaded_image):
 - **配布をDocker専用に変更**: Windows exe (PyInstaller) 配布を廃止。`Dockerfile`を
   ビルド引数`VARIANT=cpu|cuda`でCPU/CUDAの2バリアントに作り分ける。DirectML対応コード
   (Windows専用) は削除、`ORT_PROVIDERS`はCUDA→CPUのみに簡素化。
-- **RAW対応**: `photofinder/raw_utils.py`が`rawpy`の`extract_thumb()`で埋め込み
+- **RAW対応**: `okudana/raw_utils.py`が`rawpy`の`extract_thumb()`で埋め込み
   プレビューを抽出し、既存の共有ワーキングイメージパイプライン(§2 step1が当初から
   想定していた設計)にそのまま流し込む。フル現像はしない。EXIFは`piexif`が空を返す
   RAWファイルに限り`exifread`にフォールバックする。
@@ -264,7 +264,7 @@ def reverse_search(uploaded_image):
   top-k動的拡張、200〜2000)を実装し、`main.py`のk=200固定という実装との乖離を解消した。
 - **データセット書き出し**: 既存の確定/否認タグ機構(`photo_tags.verified`)を人手の
   正解データとして扱い、`POST /api/export/dataset`で教師/評価データセット用の
-  JSONL+画像zipを書き出す新機能(`photofinder/dataset_export.py`)。
+  JSONL+画像zipを書き出す新機能(`okudana/dataset_export.py`)。
 - **ライブラリ外の画像の書き出し**: ヘッダーの「外部画像」(クリック、またはそのボタンへの
   ドロップ)から、索引に無い画像をライブラリ内と同じ切り出し・透かし手順で書き出す
   (`POST /api/export/external`、詳細は docs/api-spec.md)。検索窓へのドロップと貼り付けは
@@ -273,11 +273,12 @@ def reverse_search(uploaded_image):
 - **製品名を Okudana に変更** (0.5.0): 画面・ドキュメント・Docker イメージ
   (`okudana:cpu` / `okudana:cuda` / `okudana:model-fetch`) と compose の
   プロジェクト名 `okudana`、ボリューム実名 `okudana_data` / `okudana_models`。
-  Python パッケージ `photofinder`、DB ファイル `photofinder.db`、環境変数
-  `PHOTOFINDER_*` は既存データとバックアップのためそのまま。0.4.x からの
-  ボリュームコピーは docs/docker.md。
+  この時点では Python パッケージ `photofinder`、DB ファイル `photofinder.db`、
+  環境変数 `PHOTOFINDER_*` は既存データを開けるようにそのままにした。
+  0.4.x からのボリュームコピーは docs/docker.md。0.6.0 でこれらも改名し、
+  起動時に旧 DB を `okudana.db` へ移す。
 - **フルバックアップ/復元**: 週次DBスナップショット(`VACUUM INTO`・DBのみ)を廃止し、
   `data/`ディレクトリ全体(DB・FAISS索引・サムネ/プレビュー・poi.db等)をzipで
-  ダウンロード/復元する`photofinder/backup.py`・`POST /api/backup/full`/
+  ダウンロード/復元する`okudana/backup.py`・`POST /api/backup/full`/
   `full-restore`に置き換えた。復元前にライブデータを退避してから展開し、失敗時は
   ロールバック、成功時はプロセス終了→Dockerのrestart policyで再起動する。

@@ -144,7 +144,9 @@ docker compose --profile cpu up -d      # コンテナを作り直す。volume�
 その名前を下のコマンドに使う）。
 
 中身（DB・サムネ・FAISS・モデル）を新しいボリュームへコピーしてから起動する。
-コピーの前に、まだ古い compose ファイルの状態でコンテナを止める。
+コピーの前に、まだ古い compose ファイルの状態でコンテナを止める。DB ファイルの
+改名は、新しいコンテナの初回起動が行う（`photofinder.db` を `okudana.db` へ。
+`-wal` / `-shm` も）。コピー後に手でファイル名を変えない。
 
 ```bash
 docker compose --profile cpu down    # GPU なら --profile cuda。-v は付けない
@@ -174,12 +176,15 @@ docker stop $(docker ps -q --filter label=com.docker.compose.project=photofinder
 `docker volume rm` は確認前に実行しない。イメージ `photofinder:cpu` /
 `photofinder:cuda` は使わなくなるので、確認後に `docker image rm` してよい。
 
-変えていないもの:
+そのままのもの:
 
 - `.env` の `PHOTO_LIBRARY_PATH`。登録済みの走査ルート（コンテナ内の `/photos/...`）も DB の中に残る。
-- 環境変数 `PHOTOFINDER_DATA` / `PHOTOFINDER_DOCKER` / `PHOTOFINDER_HOST` / `PHOTOFINDER_PORT` / `PHOTOFINDER_BACKUP_MAX_UPLOAD_BYTES`。
-- データディレクトリ内の `photofinder.db`。バックアップ zip の中のファイル名も同じなので、古い zip はそのまま復元できる。
-- 起動コマンド `python -m uvicorn photofinder.main:app`。Python パッケージ名は `photofinder` のまま。
+
+起動時に移すもの:
+
+- データディレクトリの `photofinder.db`（と `-wal` / `-shm`）は `okudana.db` になる。以前ダウンロードしたバックアップ zip は、中のファイル名が `photofinder.db` のままでも復元できる。新しいバックアップの中は `okudana.db`。
+- イメージ内の環境変数は `OKUDANA_DATA` / `OKUDANA_DOCKER` / `OKUDANA_HOST` / `OKUDANA_PORT`。`OKUDANA_*` が無いときだけ、旧 `PHOTOFINDER_*` を読む。
+- パッケージは `okudana`。起動コマンドは `python -m uvicorn okudana.main:app`。
 
 GitHub の旧 URL `https://github.com/MeiNogizaka/Photofinder` は新しいリポジトリへ
 転送される。ローカルのフォルダ名はボリューム名に影響しない。
@@ -187,7 +192,7 @@ GitHub の旧 URL `https://github.com/MeiNogizaka/Photofinder` は新しいリ�
 ### モデル・スキーマの扱い
 
 モデル(SigLIP2/YOLOv8x/OCR)を差し替える更新でない限り、`model-fetch`の
-再実行は不要。DBスキーマの変更は`photofinder/db.py`の`_migrate()`が
+再実行は不要。DBスキーマの変更は`okudana/db.py`の`_migrate()`が
 `schema_meta.schema_version`を見て起動時に自動で追記型のマイグレーションを
 行うため、手動でのDB操作は基本的に不要(既存行を壊さない設計)。念のため、
 更新前に設定画面の「バックアップ / 復元」から手動でフルバックアップを
@@ -207,10 +212,10 @@ volume操作は一切不要。復元は数百MB〜数GB規模のブラウザア�
 「退避した旧ツリー + 新ツリー + アップロードzip」が同じvolume上に同居する。
 ピークではおおよそ**バックアップ展開後サイズ（非圧縮）分の空き**が必要。
 不足時は復元がエラーになり、退避内容は書き戻される。アップロード上限の既定は
-32GiB（環境変数`PHOTOFINDER_BACKUP_MAX_UPLOAD_BYTES`で変更、0以下で無制限）。
+32GiB（環境変数`OKUDANA_BACKUP_MAX_UPLOAD_BYTES`で変更、0以下で無制限）。
 
 **途中中断時**: 復元中にコンテナが落ちた場合、次回起動時に
-`data/backup/RESTORE_IN_PROGRESS` または「`photofinder.db`が無く
+`data/backup/RESTORE_IN_PROGRESS` または「`okudana.db` も旧 `photofinder.db` も無く
 `before_restore_*`だけがある」状態を検知し、最新の退避から自動で書き戻す。
 手動で直す場合は `data/backup/before_restore_<timestamp>/` 内のファイルを
 `data/` 直下へ戻す。
@@ -260,7 +265,7 @@ README参照)は、ネットワーク経由で他者がアプリと対話でき�
 
 ## --workers 1 が必須な理由
 
-`photofinder/main.py`はモジュールレベルで`db`(SQLite接続)と`vstore`(FAISS索引)の
+`okudana/main.py`はモジュールレベルで`db`(SQLite接続)と`vstore`(FAISS索引)の
 シングルトンを保持する単一プロセス設計 (CLAUDE.md「Single process, three stores」)。
 複数uvicornワーカーを立てると各ワーカーが独立にFAISS/SQLite状態を持ち、書き込みが
 競合する。`Dockerfile`のCMDは常に`--workers 1`を指定している — 変更しないこと。

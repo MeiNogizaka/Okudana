@@ -24,7 +24,7 @@ from PIL import Image
 
 from .paths import data_dir
 
-log = logging.getLogger("photofinder.colors")
+log = logging.getLogger("okudana.colors")
 
 CACHE_PATH = data_dir() / "color_bank.npz"
 

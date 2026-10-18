@@ -17,7 +17,7 @@ import sys
 import zipfile
 from collections import defaultdict
 
-# photofinder/detector.py の CONF_THRESHOLD と同じ値。閾値スイープ表で
+# okudana/detector.py の CONF_THRESHOLD と同じ値。閾値スイープ表で
 # 「現在の設定」の位置が分かるように印を付ける
 CURRENT_YOLO_CONF_THRESHOLD = 0.35
 YOLO_SWEEP_THRESHOLDS = [0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.60, 0.70, 0.80]
@@ -59,7 +59,7 @@ def print_yolo_threshold_sweep(rows: list[dict]) -> None:
                 if t["source"] == "yolo"]
     yolo_neg = [t["conf"] for row in rows for t in row.get("negative_tags", [])
                 if t["source"] == "yolo"]
-    print("\n=== YOLO信頼度しきい値の感度分析 (photofinder/detector.py CONF_THRESHOLD) ===")
+    print("\n=== YOLO信頼度しきい値の感度分析 (okudana/detector.py CONF_THRESHOLD) ===")
     if not yolo_pos and not yolo_neg:
         print("(source=yoloの確定/否認タグが無いためスキップ)")
         return
@@ -84,7 +84,7 @@ def print_species_margin_analysis(rows: list[dict]) -> None:
             pos_margins_list = pos_margins if d["verified"] == 1 else neg_margins
             pos_margins_list.append(topk[0][1] - topk[1][1])
 
-    print("\n=== 種名候補のマージン (top1-top2類似度) 分析 (photofinder/bird.py MIN_MARGIN) ===")
+    print("\n=== 種名候補のマージン (top1-top2類似度) 分析 (okudana/bird.py MIN_MARGIN) ===")
     if not pos_margins and not neg_margins:
         print("(species_detailが無いためスキップ)")
         return

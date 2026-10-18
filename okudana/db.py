@@ -94,8 +94,12 @@ class LockedConnection:
 
 
 def open_db(data_dir: Path) -> LockedConnection:
+    # 遅延 import: backup は db を import しないが、循環を避ける
+    from .backup import adopt_legacy_database
+
     data_dir.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(data_dir / "photofinder.db", check_same_thread=False)
+    adopt_legacy_database(data_dir)
+    db = sqlite3.connect(data_dir / "okudana.db", check_same_thread=False)
     db.execute("PRAGMA journal_mode=WAL")
     db.execute("PRAGMA synchronous=NORMAL")
     db.execute("PRAGMA foreign_keys=ON")

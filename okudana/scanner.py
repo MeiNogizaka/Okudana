@@ -25,7 +25,7 @@ except ImportError:  # HEIC 非対応環境でも動作は継続
 
 from . import raw_utils
 
-log = logging.getLogger("photofinder.scanner")
+log = logging.getLogger("okudana.scanner")
 
 THUMB_EDGE = 320
 PREVIEW_EDGE = 1600

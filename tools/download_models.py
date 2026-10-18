@@ -46,7 +46,7 @@ DOWNLOADS = [
     ("cycloneboy/japan_PP-OCRv3_rec_infer", "model.onnx", "ocr"),
     ("cycloneboy/japan_PP-OCRv3_rec_infer", "japan_dict.txt", "ocr"),
     # M5 の野鳥種名推定は SigLIP のゼロショット流用のため追加モデル不要
-    # (専用分類器を使わない理由は photofinder/bird.py の docstring 参照)
+    # (専用分類器を使わない理由は okudana/bird.py の docstring 参照)
     # YOLOv8m (M3: 物体検出 → 自動タグ) は export_yolo() で別途生成する
 ]
 

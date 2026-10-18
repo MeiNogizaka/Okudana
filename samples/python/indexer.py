@@ -27,7 +27,7 @@ DDL_PATH = Path(__file__).parent / "schema.sql"  # docs/data-schema.md ã® DDL ã
 
 
 def open_db(data_dir: Path) -> sqlite3.Connection:
-    db = sqlite3.connect(data_dir / "photofinder.db")
+    db = sqlite3.connect(data_dir / "okudana.db")
     db.execute("PRAGMA journal_mode=WAL")
     db.execute("PRAGMA synchronous=NORMAL")
     db.row_factory = sqlite3.Row

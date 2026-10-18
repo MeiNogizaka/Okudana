@@ -1,7 +1,7 @@
 """Okudana API サーバ (M2)。
 
 起動:
-    .venv\\Scripts\\python.exe -m uvicorn photofinder.main:app --port 8686
+    python -m uvicorn okudana.main:app --port 8686
 
 検索: SigLIP ベクトル検索 + キーワード検索 (ファイル名/タグ) の RRF 融合。
 画像検索: SigLIP 類似 + pHash 再ランクで原本特定 (docs/design.md §3)。
@@ -33,21 +33,22 @@ from . import fts, ml, scanner
 from . import __version__
 from .db import open_db
 from .palette import colors_from_json
-from .paths import data_dir
+from .paths import data_dir, env
 from .vectors import VectorStore
 
-log = logging.getLogger("photofinder.main")
+log = logging.getLogger("okudana.main")
 DATA_DIR = data_dir()
 STATIC_DIR = Path(__file__).parent / "static"
 RRF_K = 60
 # Dockerfile が既定でENV設定する。コンテナにはデスクトップが無くファイル
 # マネージャを開けないため、reveal系エンドポイント/UIボタンをここで判定して
 # 出し分ける (GET /api/index/status の in_docker フィールド経由でフロントに伝える)
-IN_DOCKER = os.environ.get("PHOTOFINDER_DOCKER") == "1"
+IN_DOCKER = env("DOCKER") == "1"
 # フルバックアップzipのアップロード上限 (既定 32GiB)。大きいサムネライブラリ向け。
-# 0 以下で無制限。環境変数 PHOTOFINDER_BACKUP_MAX_UPLOAD_BYTES で上書き可
-_BACKUP_MAX_UPLOAD = int(os.environ.get(
-    "PHOTOFINDER_BACKUP_MAX_UPLOAD_BYTES", str(32 * 1024 ** 3)))
+# 0 以下で無制限。環境変数 OKUDANA_BACKUP_MAX_UPLOAD_BYTES
+# （未設定なら旧 PHOTOFINDER_BACKUP_MAX_UPLOAD_BYTES）で上書き可
+_BACKUP_MAX_UPLOAD = int(env(
+    "BACKUP_MAX_UPLOAD_BYTES", str(32 * 1024 ** 3)))
 # ライブラリに入っていない画像の書き出し。索引にも data/ にも残さない。
 # 受け取りは一時ファイルで、書き出し完了かダイアログを閉じたとき、または
 # 放置されて TTL を過ぎたときに消す。
@@ -56,10 +57,13 @@ _EXT_TTL_SEC = 30 * 60
 _EXT_LOCK = threading.Lock()
 _EXT: dict[str, dict] = {}
 
-# 中断された復元があれば open_db より前に退避を書き戻す (空DB新規作成を防ぐ)
+# 中断された復元があれば open_db より前に退避を書き戻す (空DB新規作成を防ぐ)。
+# そのあとで旧ファイル名 photofinder.db を okudana.db へ改名する。
+# 順番を逆にすると、旧名のまま成功した復元を「DBが無い」と誤って巻き戻す。
 _recovered = backup_mod.recover_incomplete_restore(DATA_DIR)
 if _recovered:
     log.warning("startup recovery: %s", _recovered)
+backup_mod.adopt_legacy_database(DATA_DIR)
 _legacy_n = backup_mod.cleanup_legacy_db_snapshots(DATA_DIR)
 if _legacy_n:
     log.info("removed %d legacy weekly DB snapshot(s) under backup/", _legacy_n)
@@ -616,7 +620,7 @@ async def stage_external_export(file: UploadFile = File(...)):
     """
     name = file.filename or "image"
     stem, ext = _ext_stem(name)
-    tmp = Path(tempfile.mkdtemp(prefix="pf-export-"))
+    tmp = Path(tempfile.mkdtemp(prefix="okudana-export-"))
     dest = tmp / f"{stem}{ext or '.img'}"
     size = 0
     try:
@@ -1214,7 +1218,7 @@ async def backup_full_restore(file: UploadFile = File(...)):
     自体は os._exit を呼ばない — プロセス管理はここ main.py の責務)。
 
     try_acquire 時点で STATUS.phase=uploading になり、スキャン開始は is_busy()
-    で拒否される。アップロードサイズは PHOTOFINDER_BACKUP_MAX_UPLOAD_BYTES
+    で拒否される。アップロードサイズは OKUDANA_BACKUP_MAX_UPLOAD_BYTES
     (既定 32GiB、0 以下で無制限) で上限する。
     """
     if scanner.STATUS.running:
@@ -1233,7 +1237,7 @@ async def backup_full_restore(file: UploadFile = File(...)):
                         413,
                         f"backup upload exceeds limit "
                         f"({_BACKUP_MAX_UPLOAD} bytes); set "
-                        f"PHOTOFINDER_BACKUP_MAX_UPLOAD_BYTES to raise it",
+                        f"OKUDANA_BACKUP_MAX_UPLOAD_BYTES to raise it",
                     )
                 f.write(chunk)
 

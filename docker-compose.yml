@@ -11,10 +11,10 @@
 
 # プロジェクト名とボリューム実名はフォルダ名に依存させない。
 # ボリュームは下の name: で okudana_data / okudana_models に固定する。
-# 0.4.x (PhotoFinder) の実名は photofinder_photofinder_data /
+# 0.4.x の実ボリューム名は photofinder_photofinder_data /
 # photofinder_photofinder_models。移し方は docs/docker.md。
-# 環境変数 PHOTOFINDER_* と DB ファイル photofinder.db は、既存データと
-# バックアップを開けるように変えていない。
+# コンテナには OKUDANA_* を渡す。アプリは未設定時だけ旧 PHOTOFINDER_* を読む。
+# データディレクトリの photofinder.db は起動時に okudana.db へ改名する。
 name: okudana
 
 services:
@@ -38,9 +38,9 @@ services:
     ports:
       - "127.0.0.1:8686:8686"
     environment:
-      PHOTOFINDER_DATA: /app/data
-      PHOTOFINDER_HOST: 0.0.0.0   # コンテナ内で全interface待受 (実際の公開範囲は上のports:が決める)
-      PHOTOFINDER_PORT: "8686"
+      OKUDANA_DATA: /app/data
+      OKUDANA_HOST: 0.0.0.0   # コンテナ内で全interface待受 (実際の公開範囲は上のports:が決める)
+      OKUDANA_PORT: "8686"
     volumes:
       - okudana_data:/app/data
       - okudana_models:/app/models
@@ -69,9 +69,9 @@ services:
     ports:
       - "127.0.0.1:8686:8686"
     environment:
-      PHOTOFINDER_DATA: /app/data
-      PHOTOFINDER_HOST: 0.0.0.0
-      PHOTOFINDER_PORT: "8686"
+      OKUDANA_DATA: /app/data
+      OKUDANA_HOST: 0.0.0.0
+      OKUDANA_PORT: "8686"
     volumes:
       - okudana_data:/app/data
       - okudana_models:/app/models

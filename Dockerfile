@@ -50,7 +50,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
          && pip install --no-cache-dir -r requirements-gpu.txt; \
        fi
 
-COPY photofinder/ photofinder/
+COPY okudana/ okudana/
 COPY tools/ tools/
 # pillow-heifのLinux wheelはlibheif/libde265に加えlibx265 (GPL-2.0のHEVCエンコーダ、
 # デコードのみのOkudanaからは実際には呼ばれない) を同梱している (実機確認済み、
@@ -58,10 +58,10 @@ COPY tools/ tools/
 # 同梱しておく
 COPY docs/third-party-licenses/x265-COPYING.txt THIRD-PARTY-LICENSES/x265-COPYING.txt
 
-ENV PHOTOFINDER_DATA=/app/data \
-    PHOTOFINDER_DOCKER=1 \
-    PHOTOFINDER_HOST=0.0.0.0 \
-    PHOTOFINDER_PORT=8686
+ENV OKUDANA_DATA=/app/data \
+    OKUDANA_DOCKER=1 \
+    OKUDANA_HOST=0.0.0.0 \
+    OKUDANA_PORT=8686
 
 # data/・models/はボリューム化 (イメージに焼き込まない)。モデルは別途
 # model-fetchステージ/サービスで取得する (docs/docker.md参照)
@@ -73,13 +73,13 @@ USER appuser
 
 # GET /api/index/status は既存のインデックス状態確認エンドポイントを流用
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD curl -f "http://127.0.0.1:${PHOTOFINDER_PORT}/api/index/status" || exit 1
+    CMD curl -f "http://127.0.0.1:${OKUDANA_PORT}/api/index/status" || exit 1
 
 ENTRYPOINT ["tini", "--"]
 # --workers 1 は必須: main.pyはモジュールレベルでdb (LockedConnection) と
 # vstore (FAISS index) のシングルトンを保持しており、複数ワーカーは
 # FAISS/SQLiteの状態競合を起こす (CLAUDE.md「Single process, three stores」参照)
-CMD ["sh", "-c", "exec uvicorn photofinder.main:app --host ${PHOTOFINDER_HOST} --port ${PHOTOFINDER_PORT} --workers 1"]
+CMD ["sh", "-c", "exec uvicorn okudana.main:app --host ${OKUDANA_HOST} --port ${OKUDANA_PORT} --workers 1"]
 
 # -------------------------------------------------------------- model-fetch -
 # アプリイメージのビルド/再ビルドのたびに ~1.5GB を再取得しないよう、
