@@ -32,7 +32,7 @@
   header h1 { font-size:15px; margin:0; color:var(--accent); }
   header .ver { font-size:11px; color:var(--ink2); letter-spacing:.02em; }
   #qDrop { flex:1; max-width:560px; position:relative; }
-  #extDrop { position:relative; flex:none; }
+  #extDrop { position:relative; }
   #extExportBtn { white-space:nowrap; }
   #q {
     width:100%; background:var(--card); border:1px solid var(--line);
@@ -103,9 +103,12 @@
   #panel {
     width:320px; flex:none; border-left:1px solid var(--line); background:var(--card);
     overflow-y:auto; padding:14px 16px;
+    display:flex; flex-direction:column;
   }
-  #panelIdle { display:flex; height:100%; align-items:center; justify-content:center;
-    text-align:center; color:var(--ink2); font-size:12.5px; padding:0 12px; }
+  #panelIdle { flex:1; min-height:0; display:flex; flex-direction:column; gap:16px;
+    align-items:center; justify-content:center;
+    text-align:center; color:var(--ink2); font-size:12.5px; padding:0 4px; }
+  #panelIdle p { margin:0; }
   #panelDetail { display:none; }
   #panel.open #panelIdle { display:none; }
   #panel.open #panelDetail { display:block; }
@@ -348,10 +351,6 @@
   <div id="qDrop">
     <input id="q" type="search" placeholder="自然言語で検索（例: 青い鳥 / 紅葉の寺）— 画像をドロップ/貼り付けで原本検索" autocomplete="off">
   </div>
-  <div id="extDrop">
-    <button id="extExportBtn" class="ghost" type="button" title="ライブラリに無い画像を書き出す。クリックでファイルを選ぶか、このボタンへ画像をドロップ">外部画像</button>
-    <input id="extExportFile" type="file" hidden accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.heic,.heif,.tif,.tiff,.bmp,.cr2,.cr3,.nef,.arw,.orf,.raf,.rw2,.dng,.pef">
-  </div>
   <input id="dateFrom" type="date" title="この日以降">
   <input id="dateTo" type="date" title="この日以前">
   <button id="searchBtn">検索</button>
@@ -384,7 +383,13 @@
   </div>
 
   <aside id="panel">
-    <div id="panelIdle">写真を選択してください</div>
+    <div id="panelIdle">
+      <p>写真を選択してください</p>
+      <div id="extDrop">
+        <button id="extExportBtn" class="ghost" type="button" title="ライブラリに無い画像を書き出す。クリックでファイルを選ぶか、このボタンへ画像をドロップ">外部画像</button>
+        <input id="extExportFile" type="file" hidden accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.heic,.heif,.tif,.tiff,.bmp,.cr2,.cr3,.nef,.arw,.orf,.raf,.rw2,.dng,.pef">
+      </div>
+    </div>
     <div id="panelDetail">
     <div class="row">
       <h2 id="pName"></h2>

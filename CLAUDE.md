@@ -292,8 +292,9 @@ metadata about the export having happened, not the exported bytes themselves, so
 on-disk persistence of the export output.
 
 **Images that are not in the library use the same export dialog, and still must not
-land in `data/` or the index.** The header control 「外部画像」 (`#extDrop`) is both
-the file picker and the drop target. Search-box drop and paste stay reverse search
+land in `data/` or the index.** 「外部画像」 (`#extDrop`) sits in `#panelIdle`, the
+right-hand empty state, and is both the file picker and the drop target. It is
+hidden while a library photo is selected (`#panel.open`). Search-box drop and paste stay reverse search
 (`POST /api/search/by-image`). Flow: `POST /api/export/external` (multipart `file`,
 256MiB cap) stages one directory under the OS temp dir (`okudana-export-*`, not `data/`),
 decodes it with `scanner._open_working_image` so EXIF orientation and RAW embedded
