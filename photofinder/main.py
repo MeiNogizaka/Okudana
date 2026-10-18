@@ -12,6 +12,9 @@ import io
 import json
 import logging
 import os
+import re
+import secrets
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -45,6 +48,13 @@ IN_DOCKER = os.environ.get("PHOTOFINDER_DOCKER") == "1"
 # 0 以下で無制限。環境変数 PHOTOFINDER_BACKUP_MAX_UPLOAD_BYTES で上書き可
 _BACKUP_MAX_UPLOAD = int(os.environ.get(
     "PHOTOFINDER_BACKUP_MAX_UPLOAD_BYTES", str(32 * 1024 ** 3)))
+# ライブラリに入っていない画像の書き出し。索引にも data/ にも残さない。
+# 受け取りは一時ファイルで、書き出し完了かダイアログを閉じたとき、または
+# 放置されて TTL を過ぎたときに消す。
+_EXT_MAX_BYTES = 256 * 1024 * 1024
+_EXT_TTL_SEC = 30 * 60
+_EXT_LOCK = threading.Lock()
+_EXT: dict[str, dict] = {}
 
 # 中断された復元があれば open_db より前に退避を書き戻す (空DB新規作成を防ぐ)
 _recovered = backup_mod.recover_incomplete_restore(DATA_DIR)
@@ -483,19 +493,9 @@ def export_options():
     }
 
 
-@app.post("/api/photos/{photo_id}/export")
-def export(photo_id: int, body: dict = Body(default={})):
-    """切り出し + 透かし + GPS除去で書き出し、ブラウザへ直接ダウンロード返却する。
-
-    原本は変更しない。書き出し結果はコンテナ内に保存せず、レスポンスとして
-    その場で返すのみ (以前は data/exports/ 配下に永続化していたが、Docker配布
-    ではダウンロード後にコンテナ内へファイルを残しておく理由が無いため撤廃)。
-    """
-    from .export import MAX_EDGE_LIMIT, export_photo
-    p = _photo_or_404(photo_id)
-    src = Path(p["root_path"]) / p["path"]
-    if not src.exists():
-        raise HTTPException(404, "source file missing")
+def _parse_export_request(body: dict) -> dict:
+    """写真書き出しと、ライブラリ外の書き出しで共通のパラメータ検証。"""
+    from .export import MAX_EDGE_LIMIT
     fmt = body.get("format", "jpeg")
     if fmt not in ("jpeg", "png", "webp"):
         raise HTTPException(422, "format must be jpeg|png|webp")
@@ -525,28 +525,173 @@ def export(photo_id: int, body: dict = Body(default={})):
         if not (0 < target_mib <= 100):
             raise HTTPException(422, "target_mib must be in (0, 100]")
         target_bytes = int(target_mib * 1024 * 1024)  # 1 MiB = 1048576 バイト
-    try:
-        data, filename = export_photo(
-            src,
-            crop=body.get("crop"),
-            watermark=body.get("watermark"),
-            strip_metadata=body.get(
-                "strip_metadata", body.get("strip_gps", True)),  # 旧名も受理
-            fmt=fmt,
-            quality=quality,
-            max_edge=max_edge,
-            target_bytes=target_bytes,
-        )
-    except Exception as ex:
-        raise HTTPException(500, f"export failed: {ex}")
-    with _db_write:
-        db.execute("UPDATE photos SET exported_at=datetime('now') WHERE id=?", (photo_id,))
-        db.commit()
+    return {
+        "crop": body.get("crop"),
+        "watermark": body.get("watermark"),
+        "strip_metadata": body.get(
+            "strip_metadata", body.get("strip_gps", True)),  # 旧名も受理
+        "fmt": fmt,
+        "quality": quality,
+        "max_edge": max_edge,
+        "target_bytes": target_bytes,
+    }
+
+
+def _export_response(data: bytes, filename: str, fmt: str) -> Response:
     media_type = {"jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}[fmt]
     return Response(
         content=data, media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@app.post("/api/photos/{photo_id}/export")
+def export(photo_id: int, body: dict = Body(default={})):
+    """切り出し + 透かし + GPS除去で書き出し、ブラウザへ直接ダウンロード返却する。
+
+    原本は変更しない。書き出し結果はコンテナ内に保存せず、レスポンスとして
+    その場で返すのみ (以前は data/exports/ 配下に永続化していたが、Docker配布
+    ではダウンロード後にコンテナ内へファイルを残しておく理由が無いため撤廃)。
+    """
+    from .export import export_photo
+    p = _photo_or_404(photo_id)
+    src = Path(p["root_path"]) / p["path"]
+    if not src.exists():
+        raise HTTPException(404, "source file missing")
+    opts = _parse_export_request(body)
+    try:
+        data, filename = export_photo(src, **opts)
+    except Exception as ex:
+        raise HTTPException(500, f"export failed: {ex}")
+    with _db_write:
+        db.execute("UPDATE photos SET exported_at=datetime('now') WHERE id=?", (photo_id,))
+        db.commit()
+    return _export_response(data, filename, opts["fmt"])
+
+
+_EXT_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
+
+
+def _ext_token_or_404(token: str) -> dict:
+    if not _EXT_TOKEN_RE.match(token):
+        raise HTTPException(404, "upload not found")
+    with _EXT_LOCK:
+        _ext_sweep()
+        rec = _EXT.get(token)
+    if rec is None or not rec["path"].exists():
+        raise HTTPException(404, "upload not found")
+    return rec
+
+
+def _ext_sweep() -> None:
+    """TTL を過ぎた一時ファイルを消す。呼び出し側が _EXT_LOCK を持っていること。"""
+    now = time.time()
+    dead = [k for k, v in _EXT.items() if now - v["created"] > _EXT_TTL_SEC]
+    for key in dead:
+        _ext_discard_locked(key)
+
+
+def _ext_discard_locked(token: str) -> None:
+    rec = _EXT.pop(token, None)
+    if rec is None:
+        return
+    shutil.rmtree(rec["dir"], ignore_errors=True)
+
+
+def _ext_stem(name: str) -> tuple[str, str]:
+    """ダウンロード名に使う stem と、RAW 判定用の拡張子。パス区切りは捨てる。"""
+    base = Path(name or "image").name
+    stem = re.sub(r"[^\w\-]", "_", Path(base).stem)[:80] or "image"
+    ext = Path(base).suffix.lower()
+    if not re.fullmatch(r"\.[a-z0-9]{1,8}", ext):
+        ext = ""
+    return stem, ext
+
+
+@app.post("/api/export/external")
+async def stage_external_export(file: UploadFile = File(...)):
+    """ライブラリ外の画像を一時的に受け取り、書き出し画面用のプレビューを作る。
+
+    索引にも data/ にも残さない。トークンは 30 分で無効になる。
+    """
+    name = file.filename or "image"
+    stem, ext = _ext_stem(name)
+    tmp = Path(tempfile.mkdtemp(prefix="pf-export-"))
+    dest = tmp / f"{stem}{ext or '.img'}"
+    size = 0
+    try:
+        with dest.open("wb") as out:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > _EXT_MAX_BYTES:
+                    raise HTTPException(413, "file too large (max 256MiB)")
+                out.write(chunk)
+        if size <= 0:
+            raise HTTPException(422, "empty file")
+        img = scanner._open_working_image(dest)
+        width, height = img.size
+        img.thumbnail((scanner.PREVIEW_EDGE, scanner.PREVIEW_EDGE))
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, "WEBP", quality=85)
+    except HTTPException:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+    except Exception as ex:
+        shutil.rmtree(tmp, ignore_errors=True)
+        log.info("external export rejected %s: %s", name, ex)
+        raise HTTPException(422, "cannot decode image")
+    token = secrets.token_urlsafe(18)
+    with _EXT_LOCK:
+        _ext_sweep()
+        _EXT[token] = {
+            "dir": tmp,
+            "path": dest,
+            "name": f"{stem}{ext}",
+            "width": width,
+            "height": height,
+            "preview": buf.getvalue(),
+            "created": time.time(),
+        }
+    return {"token": token, "width": width, "height": height, "name": f"{stem}{ext or ''}"}
+
+
+@app.get("/api/export/external/{token}/preview")
+def external_export_preview(token: str):
+    rec = _ext_token_or_404(token)
+    return Response(
+        content=rec["preview"], media_type="image/webp",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.post("/api/export/external/{token}")
+def run_external_export(token: str, body: dict = Body(default={})):
+    """一時ファイルを、ライブラリ内の写真と同じ手順で書き出して返す。
+
+    photos.exported_at は更新しない。索引にも加えない。
+    """
+    from .export import export_photo
+    rec = _ext_token_or_404(token)
+    opts = _parse_export_request(body)
+    try:
+        data, filename = export_photo(rec["path"], **opts)
+    except Exception as ex:
+        raise HTTPException(500, f"export failed: {ex}")
+    return _export_response(data, filename, opts["fmt"])
+
+
+@app.delete("/api/export/external/{token}")
+def discard_external_export(token: str):
+    if not _EXT_TOKEN_RE.match(token):
+        return {"ok": True}
+    with _EXT_LOCK:
+        _ext_discard_locked(token)
+    return {"ok": True}
 
 
 # ================================================================== tags ====

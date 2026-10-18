@@ -18,6 +18,10 @@
 | GET | `/photos/{id}/file` | 原本ファイル |
 | POST | `/photos/{id}/open-in-explorer` | OS のファイルマネージャで場所を開く (Dockerコンテナ実行時は501) |
 | POST | `/photos/{id}/export` | 切り出し + 透かし + メタデータ除去で書き出し。成功時 `photos.exported_at` を更新（書き出しファイル自体は永続化しない。「いつ書き出したか」のメタ情報のみ記録し、`/search` の `exported` バッジ表示に使う） |
+| POST | `/export/external` | ライブラリ外の画像を一時受け取り（multipart の `file`）。索引にも `data/` にも残さない。応答は `{token, width, height, name}` |
+| GET | `/export/external/{token}/preview` | 上の一時画像のプレビュー WebP（EXIF 向き補正・RAW は埋め込みプレビュー後） |
+| POST | `/export/external/{token}` | 一時画像を `/photos/{id}/export` と同じ手順で書き出す。`exported_at` は更新しない |
+| DELETE | `/export/external/{token}` | 一時画像を破棄する（書き出し画面を閉じたとき） |
 | PATCH | `/photos/{id}/place` | 写真1枚の場所名を手動で上書き/解除（`poi_name:null` で自動判定に戻す） |
 | POST | `/photos/{id}/tags` | 手動タグ追加 |
 | DELETE | `/photos/{id}/tags/{tagId}` | タグ削除（手動）/ 否認（自動） |
@@ -267,6 +271,20 @@ PNG/WebP等を`FileReader`でdata URL化したもの（デコード後8MB・4000
 
 → 画像バイナリを `Content-Disposition: attachment` 付きで直接返す（`image/jpeg`|`image/png`|`image/webp`）。
 コンテナ内には保存せず、ブラウザへそのままダウンロードさせる。**原本は変更しない。**
+
+## POST /export/external
+
+ライブラリに入っていない画像を、上と同じ書き出し画面で処理する。ヘッダーの「外部画像」
+（クリックでファイル選択、またはそのボタンへのドロップ）から開く。検索窓へのドロップは
+これまでどおり原本検索で、こちらの書き出しには使わない。
+
+1. `POST /export/external` に multipart の `file` を送る。上限は 256MiB。デコードできないファイルは 422。
+2. 応答の `token` で `GET /export/external/{token}/preview` を書き出し画面の下絵にする。
+   `width` / `height` は EXIF 向き補正後（RAW は埋め込みプレビュー）のピクセル数。
+3. `POST /export/external/{token}` の JSON は `POST /photos/{id}/export` と同じ。
+   索引には加えず、`photos.exported_at` も更新しない。
+4. 画面を閉じると `DELETE /export/external/{token}`。放置された一時ファイルは 30 分で消える。
+   一時ファイルは OS の一時ディレクトリに置き、`data/` には書かない。
 
 ## POST /export/dataset
 

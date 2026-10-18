@@ -8,8 +8,8 @@
 > 「なぜそうしなかったか」が分かるようにするため。
 >
 > 下表は開発初期時点での「当初案 vs 実装」の記録であり、その後さらに変わった点
-> (Docker配布・RAW対応・FAISSチューニング・データセット書き出し) は末尾の
-> 「11. 追加変更」節を参照すること。
+> (Docker配布・RAW対応・FAISSチューニング・データセット書き出し・ライブラリ外の書き出し)
+> は末尾の「11. 追加変更」節を参照すること。
 
 | 項目 | 本書の当初案 | 実装 | 理由 |
 |---|---|---|---|
@@ -265,6 +265,11 @@ def reverse_search(uploaded_image):
 - **データセット書き出し**: 既存の確定/否認タグ機構(`photo_tags.verified`)を人手の
   正解データとして扱い、`POST /api/export/dataset`で教師/評価データセット用の
   JSONL+画像zipを書き出す新機能(`photofinder/dataset_export.py`)。
+- **ライブラリ外の画像の書き出し**: ヘッダーの「外部画像」(クリック、またはそのボタンへの
+  ドロップ)から、索引に無い画像をライブラリ内と同じ切り出し・透かし手順で書き出す
+  (`POST /api/export/external`、詳細は docs/api-spec.md)。検索窓へのドロップと貼り付けは
+  原本検索のまま。受け取りは OS の一時ディレクトリ(上限 256MiB、30分で破棄)で、`data/`
+  にも `photos` にも残さない。成功しても `photos.exported_at` は更新しない。
 - **フルバックアップ/復元**: 週次DBスナップショット(`VACUUM INTO`・DBのみ)を廃止し、
   `data/`ディレクトリ全体(DB・FAISS索引・サムネ/プレビュー・poi.db等)をzipで
   ダウンロード/復元する`photofinder/backup.py`・`POST /api/backup/full`/

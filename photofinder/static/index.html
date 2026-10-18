@@ -32,6 +32,8 @@
   header h1 { font-size:15px; margin:0; color:var(--accent); }
   header .ver { font-size:11px; color:var(--ink2); letter-spacing:.02em; }
   #qDrop { flex:1; max-width:560px; position:relative; }
+  #extDrop { position:relative; flex:none; }
+  #extExportBtn { white-space:nowrap; }
   #q {
     width:100%; background:var(--card); border:1px solid var(--line);
     border-radius:6px; padding:7px 12px; color:var(--ink); font:inherit;
@@ -47,6 +49,19 @@
     pointer-events:none; z-index:2;
   }
   body.dragging #qDrop.hot::after {
+    background:var(--accent-soft);
+    box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  /* 検索窓とは別のドロップ先。ライブラリに無い画像の書き出し */
+  body.dragging #extDrop::after {
+    content:"書き出し";
+    position:absolute; inset:-6px; display:grid; place-items:center;
+    font-size:12px; font-weight:700; color:var(--accent); white-space:nowrap;
+    background:color-mix(in srgb, var(--accent-soft) 92%, var(--card));
+    border:2px dashed var(--accent); border-radius:8px;
+    pointer-events:none; z-index:2;
+  }
+  body.dragging #extDrop.hot::after {
     background:var(--accent-soft);
     box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
   }
@@ -332,6 +347,10 @@
   </div>
   <div id="qDrop">
     <input id="q" type="search" placeholder="自然言語で検索（例: 青い鳥 / 紅葉の寺）— 画像をドロップ/貼り付けで原本検索" autocomplete="off">
+  </div>
+  <div id="extDrop">
+    <button id="extExportBtn" class="ghost" type="button" title="ライブラリに無い画像を書き出す。クリックでファイルを選ぶか、このボタンへ画像をドロップ">外部画像</button>
+    <input id="extExportFile" type="file" hidden accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.heic,.heif,.tif,.tiff,.bmp,.cr2,.cr3,.nef,.arw,.orf,.raf,.rw2,.dng,.pef">
   </div>
   <input id="dateFrom" type="date" title="この日以降">
   <input id="dateTo" type="date" title="この日以前">
@@ -1322,6 +1341,19 @@ function anyModalOpen() {
 function overSearchDrop(e) {
   return !!e.target.closest?.("#qDrop");
 }
+function overExtDrop(e) {
+  return !!e.target.closest?.("#extDrop");
+}
+const EXTERNAL_EXPORT_EXTS = new Set([
+  "jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "tif", "tiff", "bmp",
+  "cr2", "cr3", "nef", "arw", "orf", "raf", "rw2", "dng", "pef",
+]);
+function isExternalExportFile(file) {
+  if (!file) return false;
+  if ((file.type || "").startsWith("image/")) return true;
+  const ext = (file.name || "").split(".").pop().toLowerCase();
+  return EXTERNAL_EXPORT_EXTS.has(ext);
+}
 function imageFileFromList(list) {
   return [...(list ?? [])].find(f => f.type.startsWith("image/"));
 }
@@ -1342,6 +1374,7 @@ function clearFileDrag() {
   dragDepth = 0;
   document.body.classList.remove("dragging");
   $("qDrop").classList.remove("hot");
+  $("extDrop").classList.remove("hot");
 }
 
 let dragDepth = 0;
@@ -1357,15 +1390,21 @@ document.addEventListener("dragover", e => {
   if (!isFileDrag(e)) return;
   if (onNativeFileInput(e)) return;  // 設定/書き出しの <input type=file> はブラウザ既定に任せる
   e.preventDefault();
-  const allow = !anyModalOpen() && overSearchDrop(e);
+  const allow = !anyModalOpen() && (overSearchDrop(e) || overExtDrop(e));
   e.dataTransfer.dropEffect = allow ? "copy" : "none";
 });
 document.addEventListener("drop", e => {
   if (onNativeFileInput(e)) { clearFileDrag(); return; }
   e.preventDefault();
-  const accept = !anyModalOpen() && overSearchDrop(e);
+  const ext = !anyModalOpen() && overExtDrop(e);
+  const search = !anyModalOpen() && overSearchDrop(e);
   clearFileDrag();
-  if (!accept) return;
+  if (ext) {
+    const file = [...(e.dataTransfer.files ?? [])].find(isExternalExportFile);
+    if (file) startExternalExport(file);
+    return;
+  }
+  if (!search) return;
   const file = imageFileFromList(e.dataTransfer.files);
   if (file) reverseSearch(file);
 });
@@ -1374,6 +1413,12 @@ $("qDrop").addEventListener("dragenter", e => {
 });
 $("qDrop").addEventListener("dragleave", e => {
   if (!$("qDrop").contains(e.relatedTarget)) $("qDrop").classList.remove("hot");
+});
+$("extDrop").addEventListener("dragenter", e => {
+  if (isFileDrag(e) && !anyModalOpen()) $("extDrop").classList.add("hot");
+});
+$("extDrop").addEventListener("dragleave", e => {
+  if (!$("extDrop").contains(e.relatedTarget)) $("extDrop").classList.remove("hot");
 });
 document.addEventListener("paste", e => {
   const file = imageFileFromList(e.clipboardData?.files);
@@ -1414,7 +1459,7 @@ $("tagInput").addEventListener("input", async e => {
 // --- 書き出しダイアログ ---
 // 切り出しは画像全体を表示したキャンバス上に枠を描画し、ドラッグで移動/拡縮するGUI操作。
 // exp.box は画像に対する正規化座標 (0-1) の {x, y, w, h}。
-const exp = { photo: null, img: null, aspect: null, box: null, drag: null, aspectFlip: false };
+const exp = { photo: null, img: null, aspect: null, box: null, drag: null, aspectFlip: false, externalToken: null };
 const CROP_MIN = 0.03;  // 枠の最小サイズ（正規化）
 const CROP_HANDLES = [
   {id:"nw", fx:0,   fy:0,   cursor:"nwse-resize"},
@@ -1554,7 +1599,11 @@ function syncExpEdgePxVisibility() {
 }
 
 async function openExport(photo) {
+  if (exp.externalToken && exp.externalToken !== photo.externalToken) {
+    discardExternalExport(exp.externalToken);
+  }
   exp.photo = photo;
+  exp.externalToken = photo.externalToken || null;
   exp.aspect = null;
   exp.aspectFlip = false;
   exp.box = { x: 0, y: 0, w: 1, h: 1 };
@@ -1617,7 +1666,8 @@ async function openExport(photo) {
   updateExpFormatUI();
   exp.img = new Image();
   exp.img.onload = drawExport;
-  exp.img.src = `/api/photos/${photo.id}/preview?h=${photo.xxhash}`;
+  exp.img.src = photo.previewUrl
+    || `/api/photos/${photo.id}/preview?h=${photo.xxhash}`;
   $("expDlg").showModal();
   // showModal() 後でないと expCanvasWrap の clientWidth が測れない (非表示中は0)
   resizeExpCanvas();
@@ -2006,6 +2056,9 @@ function buildWatermarkPayload() {
 $("expGo").onclick = async () => {
   const box = exp.box;
   const isFull = box.w > 0.999 && box.h > 0.999;
+  const exportUrl = exp.externalToken
+    ? `/api/export/external/${exp.externalToken}`
+    : `/api/photos/${exp.photo.id}/export`;
   const body = {
     crop: isFull ? null : box,
     watermark: buildWatermarkPayload(),
@@ -2019,7 +2072,7 @@ $("expGo").onclick = async () => {
   saveExportPrefs();
   $("expResult").textContent = "書き出し中…";
   try {
-    const res = await fetch(`/api/photos/${exp.photo.id}/export`, {
+    const res = await fetch(exportUrl, {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify(body),
     });
@@ -2040,6 +2093,63 @@ $("expGo").onclick = async () => {
     $("expResult").textContent = "エラー: " + err.message;
   }
 };
+
+function discardExternalExport(token) {
+  if (!token) return;
+  if (exp.externalToken === token) exp.externalToken = null;
+  fetch(`/api/export/external/${token}`, {method: "DELETE"}).catch(() => {});
+}
+
+let extExportBusy = false;
+async function startExternalExport(file) {
+  if (extExportBusy || anyModalOpen()) return;
+  if (!isExternalExportFile(file)) {
+    alert("この形式のファイルは書き出せません");
+    return;
+  }
+  extExportBusy = true;
+  const btn = $("extExportBtn");
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "読込中…";
+  let staged = null;
+  try {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    const res = await fetch("/api/export/external", {method: "POST", body: form});
+    if (!res.ok) {
+      const b = await res.json().catch(() => null);
+      throw new Error(b?.detail || ("HTTP " + res.status));
+    }
+    staged = await res.json();
+    await openExport({
+      path: staged.name || file.name,
+      width: staged.width,
+      height: staged.height,
+      externalToken: staged.token,
+      previewUrl: `/api/export/external/${staged.token}/preview`,
+    });
+  } catch (err) {
+    // 画面が開かなかったときはトークンをここで捨てる。開いたあとは閉じる操作が捨てる
+    if (staged?.token && !$("expDlg").open) discardExternalExport(staged.token);
+    alert("外部画像の読み込みに失敗しました: " + err.message);
+  } finally {
+    extExportBusy = false;
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+$("extExportBtn").onclick = () => {
+  if (!extExportBusy) $("extExportFile").click();
+};
+$("extExportFile").addEventListener("change", () => {
+  const file = $("extExportFile").files[0];
+  $("extExportFile").value = "";
+  if (file) startExternalExport(file);
+});
+$("expDlg").addEventListener("close", () => {
+  if (exp.externalToken) discardExternalExport(exp.externalToken);
+});
 
 // --- roots / scan ---
 function openRootDlg() {

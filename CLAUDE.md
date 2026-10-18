@@ -278,6 +278,18 @@ existing `photo_posts`-existence check but querying a plain column instead of a 
 metadata about the export having happened, not the exported bytes themselves, so it doesn't reintroduce
 on-disk persistence of the export output.
 
+**Images that are not in the library use the same export dialog, and still must not
+land in `data/` or the index.** The header control 「外部画像」 (`#extDrop`) is both
+the file picker and the drop target. Search-box drop and paste stay reverse search
+(`POST /api/search/by-image`). Flow: `POST /api/export/external` (multipart `file`,
+256MiB cap) stages one directory under the OS temp dir (`pf-export-*`, not `data/`),
+decodes it with `scanner._open_working_image` so EXIF orientation and RAW embedded
+previews match `export_photo()`, and returns `{token, width, height, name}`. The
+dialog then `POST`s the same JSON as `/photos/{id}/export` to
+`/api/export/external/{token}`. Closing the dialog `DELETE`s the token; leftovers
+expire after 30 minutes. Do not insert a `photos` row and do not set `exported_at`.
+The preview response is `Cache-Control: no-store` (the token is not a content hash).
+
 **Docker packaging** (`Dockerfile` + `docker-compose.yml`, see [docs/docker.md](docs/docker.md) for
 the full rationale and troubleshooting): one `Dockerfile`, `ARG VARIANT=cpu|cuda` selects the base
 image and whether `requirements-gpu.txt` gets layered on top of `requirements.txt`. Model download
