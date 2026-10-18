@@ -1,4 +1,4 @@
-"""PhotoFinder 検索 API（FastAPI サンプル実装）
+"""Okudana 検索 API（FastAPI サンプル実装）
 
 起動:
     uvicorn search_api:app --host 127.0.0.1 --port 8686
@@ -22,7 +22,7 @@ DATA = Path("./data")
 DIM = 768
 RRF_K = 60
 
-app = FastAPI(title="PhotoFinder API")
+app = FastAPI(title="Okudana API")
 
 # --- リソースはプロセスで 1 度だけロード -----------------------------------
 _db = sqlite3.connect(DATA / "photofinder.db", check_same_thread=False)

@@ -12,7 +12,7 @@ import urllib.request
 from pathlib import Path
 
 OUT = Path(__file__).parent.parent / "sample-photos"
-UA = {"User-Agent": "PhotoFinder-dev/0.1 (local testing)"}
+UA = {"User-Agent": "Okudana-dev/0.1 (local testing)"}
 
 QUERIES = [
     ("common kingfisher perched", "real_kingfisher.jpg"),

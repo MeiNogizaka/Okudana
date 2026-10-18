@@ -1,4 +1,4 @@
--- PhotoFinder スキーマ v1 (docs/data-schema.md 準拠)
+-- Okudana スキーマ v1 (docs/data-schema.md 準拠。DBファイル名は photofinder.db)
 -- M1 では embedding/FTS/検出系テーブルも作成しておく（M2 以降で使用）
 
 CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT);

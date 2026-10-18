@@ -53,7 +53,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY photofinder/ photofinder/
 COPY tools/ tools/
 # pillow-heifのLinux wheelはlibheif/libde265に加えlibx265 (GPL-2.0のHEVCエンコーダ、
-# デコードのみのPhotoFinderからは実際には呼ばれない) を同梱している (実機確認済み、
+# デコードのみのOkudanaからは実際には呼ばれない) を同梱している (実機確認済み、
 # docs/third-party-notices.md参照)。配布物 (このDockerイメージ) にライセンス全文を
 # 同梱しておく
 COPY docs/third-party-licenses/x265-COPYING.txt THIRD-PARTY-LICENSES/x265-COPYING.txt

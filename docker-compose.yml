@@ -9,21 +9,22 @@
 # PHOTO_LIBRARY_PATH は .env ファイルか環境変数で指定 (例: PHOTO_LIBRARY_PATH=/home/you/Pictures)。
 # UIの「フォルダを追加」にはコンテナ内パス /photos/... を登録すること (ホスト側パスではない)。
 
-# 明示的に固定する: docker composeは既定でプロジェクト名(≒volume名の接頭辞)を
-# カレントディレクトリ名から決めるため、zip展開先のフォルダ名が変わる
-# (photofinder-0.2.0 等) と別プロジェクト扱いになり既存のnamed volume
-# (下記 photofinder_data/photofinder_models) を見失う。フォルダ名に依存
-# させないよう固定しておく (docs/docker.md「アップデート手順」参照)
-name: photofinder
+# プロジェクト名とボリューム実名はフォルダ名に依存させない。
+# ボリュームは下の name: で okudana_data / okudana_models に固定する。
+# 0.4.x (PhotoFinder) の実名は photofinder_photofinder_data /
+# photofinder_photofinder_models。移し方は docs/docker.md。
+# 環境変数 PHOTOFINDER_* と DB ファイル photofinder.db は、既存データと
+# バックアップを開けるように変えていない。
+name: okudana
 
 services:
-  photofinder-cpu:
+  okudana-cpu:
     build:
       context: .
       target: runtime
       args:
         VARIANT: cpu
-    image: photofinder:cpu
+    image: okudana:cpu
     profiles: ["cpu"]
     # スキャン中(ML推論込み)にホストの全コアを使い切らないようcgroups側で制限する
     deploy:
@@ -41,20 +42,20 @@ services:
       PHOTOFINDER_HOST: 0.0.0.0   # コンテナ内で全interface待受 (実際の公開範囲は上のports:が決める)
       PHOTOFINDER_PORT: "8686"
     volumes:
-      - photofinder_data:/app/data
-      - photofinder_models:/app/models
+      - okudana_data:/app/data
+      - okudana_models:/app/models
       - ${PHOTO_LIBRARY_PATH:?Set PHOTO_LIBRARY_PATH (e.g. in a .env file) to your photo library path}:/photos:ro
     restart: unless-stopped
 
-  photofinder-cuda:
+  okudana-cuda:
     build:
       context: .
       target: runtime
       args:
         VARIANT: cuda
-    image: photofinder:cuda
+    image: okudana:cuda
     profiles: ["cuda"]
-    # cpus: photofinder-cpuサービスと同じ理由。GPU推論を使っても、EXIF/走査/
+    # cpus: okudana-cpuサービスと同じ理由。GPU推論を使っても、EXIF/走査/
     # サムネ生成やOCRはCPU側で動くため無関係ではない
     deploy:
       resources:
@@ -72,8 +73,8 @@ services:
       PHOTOFINDER_HOST: 0.0.0.0
       PHOTOFINDER_PORT: "8686"
     volumes:
-      - photofinder_data:/app/data
-      - photofinder_models:/app/models
+      - okudana_data:/app/data
+      - okudana_models:/app/models
       - ${PHOTO_LIBRARY_PATH:?Set PHOTO_LIBRARY_PATH (e.g. in a .env file) to your photo library path}:/photos:ro
     restart: unless-stopped
 
@@ -84,10 +85,13 @@ services:
     build:
       context: .
       target: model-fetch
+    image: okudana:model-fetch
     profiles: ["setup"]
     volumes:
-      - photofinder_models:/app/models
+      - okudana_models:/app/models
 
 volumes:
-  photofinder_data:
-  photofinder_models:
+  okudana_data:
+    name: okudana_data
+  okudana_models:
+    name: okudana_models

@@ -1,4 +1,6 @@
-# PhotoFinder データスキーマ
+# Okudana データスキーマ
+
+製品名は Okudana。SQLite ファイル名は既存ボリュームとバックアップのため `photofinder.db` のまま。
 
 ストア構成: **SQLite（メタデータ + FTS5 全文）** / **FAISS（埋め込みベクトル）** / **ファイルシステム（サムネ WebP）**。
 FAISS の vector ID = `photos.id` として結合し、対応表を持たない。

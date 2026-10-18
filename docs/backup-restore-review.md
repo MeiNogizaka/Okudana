@@ -3,7 +3,7 @@
 - **対象コミット (初回実装)**: `979a4e1` — Replace weekly DB-only snapshot with full data backup/restore  
 - **レビュー日**: 2026-08-07  
 - **フォローアップ**: 0.3.1（本ドキュメント記載の指摘への修正）  
-- **リポジトリ**: https://github.com/MeiNogizaka/Photofinder  
+- **リポジトリ**: https://github.com/MeiNogizaka/Okudana  
 - **前提**: 当初は個人運用想定。将来の公開を見据え、同時実行・クラッシュ復旧・入力検証を強化した。
 
 ---

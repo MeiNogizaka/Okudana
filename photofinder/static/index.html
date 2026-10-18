@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PhotoFinder</title>
+<title>Okudana</title>
 <style>
   :root {
     --paper:#f5f7f7; --card:#fff; --ink:#1b2226; --ink2:#5a686e;
@@ -342,7 +342,7 @@
 
 <header>
   <div class="brand">
-    <h1>PhotoFinder</h1>
+    <h1>Okudana</h1>
     <span id="appVersion" class="ver"></span>
   </div>
   <div id="qDrop">
@@ -609,7 +609,7 @@
 
   <p class="lbl" style="margin-top:16px">終了</p>
   <div class="btns">
-    <button id="setShutdown" class="ghost" style="font-size:11.5px; color:#c0392b">PhotoFinderを終了</button>
+    <button id="setShutdown" class="ghost" style="font-size:11.5px; color:#c0392b">Okudanaを終了</button>
   </div>
   <p style="font-size:11px; color:var(--ink2); margin:6px 0 0">
     アプリを終了します。この画面を含む全てのタブが使えなくなります
@@ -2265,7 +2265,7 @@ $("setBackupFull").onclick = async () => {
     const m = cd.match(/filename="?([^"]+)"?/);
     const a = document.createElement("a");
     const url = URL.createObjectURL(blob);
-    a.href = url; a.download = m ? m[1] : "photofinder-backup.zip"; a.click();
+    a.href = url; a.download = m ? m[1] : "okudana-backup.zip"; a.click();
     URL.revokeObjectURL(url);
     $("setBackupFull").textContent = "ダウンロードしました";
   } catch (err) {
@@ -2669,7 +2669,7 @@ $("setPaletteNote").addEventListener("change", e => {
   savePaletteSettings();
 });
 $("setShutdown").addEventListener("click", async () => {
-  if (!confirm("PhotoFinderを終了しますか？")) return;
+  if (!confirm("Okudanaを終了しますか？")) return;
   $("setShutdown").disabled = true;
   $("setShutdown").textContent = "終了中…";
   // レスポンス到達前にプロセスが終了することもあるため、失敗しても
@@ -2677,7 +2677,7 @@ $("setShutdown").addEventListener("click", async () => {
   await api("/shutdown", {method: "POST"}).catch(() => {});
   document.body.innerHTML =
     '<p style="padding:40px; font-size:14px; text-align:center; color:var(--ink)">' +
-    'PhotoFinder を終了しました。このタブは閉じて構いません。</p>';
+    'Okudana を終了しました。このタブは閉じて構いません。</p>';
 });
 
 // --- 並び順トグル ---

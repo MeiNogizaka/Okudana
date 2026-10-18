@@ -1,5 +1,5 @@
 /**
- * PhotoFinder 検索画面（React サンプル）
+ * Okudana 検索画面（React サンプル）
  *
  * 構成: 検索バー(自然言語+画像ドロップ) / フィルタチップ / 仮想スクロールグリッド / 詳細パネル
  * 依存: @tanstack/react-query, @tanstack/react-virtual

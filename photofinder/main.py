@@ -1,4 +1,4 @@
-"""PhotoFinder API サーバ (M2)。
+"""Okudana API サーバ (M2)。
 
 起動:
     .venv\\Scripts\\python.exe -m uvicorn photofinder.main:app --port 8686
@@ -65,7 +65,7 @@ if _legacy_n:
     log.info("removed %d legacy weekly DB snapshot(s) under backup/", _legacy_n)
 
 app = FastAPI(
-    title="PhotoFinder", version=__version__,
+    title="Okudana", version=__version__,
     license_info={"name": "AGPL-3.0", "url": "https://www.gnu.org/licenses/agpl-3.0.html"},
 )
 db = open_db(DATA_DIR)
@@ -1185,7 +1185,7 @@ def backup_full():
         raise HTTPException(409, "backup or restore already in progress")
     vstore.save()  # メモリ上の最新FAISS索引をディスクへ反映してからzipに含める
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-    fd, tmp_name = tempfile.mkstemp(prefix=f"photofinder-backup-{ts}-", suffix=".zip")
+    fd, tmp_name = tempfile.mkstemp(prefix=f"okudana-backup-{ts}-", suffix=".zip")
     os.close(fd)
     out_path = Path(tmp_name)
     try:
@@ -1196,7 +1196,7 @@ def backup_full():
     finally:
         backup_mod.release()
     return FileResponse(
-        out_path, media_type="application/zip", filename=f"photofinder-backup-{ts}.zip",
+        out_path, media_type="application/zip", filename=f"okudana-backup-{ts}.zip",
         background=BackgroundTask(out_path.unlink, missing_ok=True),
     )
 

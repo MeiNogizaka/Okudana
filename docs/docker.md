@@ -1,7 +1,8 @@
 # Docker配布
 
-photofinderはDocker専用配布 (Windows exeビルドは廃止)。CPU/CUDAの2バリアントを
-1本の`Dockerfile`からビルド引数`VARIANT`で作り分ける。
+Okudana（旧名 PhotoFinder）はDocker専用配布 (Windows exeビルドは廃止)。
+CPU/CUDAの2バリアントを1本の`Dockerfile`からビルド引数`VARIANT`で作り分ける。
+イメージ名は `okudana:cpu` / `okudana:cuda`、モデル取得用は `okudana:model-fetch`。
 
 ## クイックスタート
 
@@ -57,13 +58,13 @@ named volumeには何も残らない。
 
 | マウント先 | 内容 | 種別 |
 |---|---|---|
-| `/app/data` | SQLite DB・FAISS索引・サムネ/プレビュー・バックアップ・poi.db | named volume (`photofinder_data`) |
-| `/app/models` | SigLIP2/YOLOv8x/OCRのONNXモデル | named volume (`photofinder_models`) |
+| `/app/data` | SQLite DB・FAISS索引・サムネ/プレビュー・バックアップ・poi.db | named volume (`okudana_data`) |
+| `/app/models` | SigLIP2/YOLOv8x/OCRのONNXモデル | named volume (`okudana_models`) |
 | `/photos` | 写真ライブラリ (read-only) | bind mount (ホスト側フォルダ) |
 
 設定画面の「バックアップ / 復元」から、DB・FAISS索引・サムネ/プレビュー・poi.db等
 `data/`全体をzipでダウンロード/復元できる (`POST /api/backup/full`/`full-restore`)。
-復元前のライブデータの退避先 (直前1世代のみ) も同じ`photofinder_data`ボリューム内
+復元前のライブデータの退避先 (直前1世代のみ) も同じ`okudana_data`ボリューム内
 `data/backup/before_restore_<timestamp>/`に作られる (docs/api-spec.md参照)。
 
 ### WSL2でのパフォーマンスの注意
@@ -72,7 +73,7 @@ WSL2上でコンテナを動かし、`PHOTO_LIBRARY_PATH`にWindows側フォル�
 (`/mnt/c/Users/...`等) を指定すると、WSL2からNTFSへのアクセスは小さいファイルを
 大量に読み書きする処理 (差分スキャンのxxHash計算・サムネ/プレビュー生成など) で
 体感できるほど遅くなることが知られている (WSL2のよく知られた制約で、
-photofinder固有の問題ではない)。写真枚数が多いライブラリでは:
+Okudana固有の問題ではない)。写真枚数が多いライブラリでは:
 
 - 可能なら写真そのものをWSL2側のネイティブファイルシステム (例: `~/Pictures`) に
   置き、`PHOTO_LIBRARY_PATH`もそちらを指す
@@ -88,8 +89,8 @@ photofinder固有の問題ではない)。写真枚数が多いライブラリ�
 
 ```yaml
     volumes:
-      - photofinder_data:/app/data
-      - photofinder_models:/app/models
+      - okudana_data:/app/data
+      - okudana_models:/app/models
       - ${PHOTO_LIBRARY_PATH}:/photos:ro
       - ${PHOTO_LIBRARY_PATH2}:/photos2:ro   # 追加
 ```
@@ -98,6 +99,10 @@ photofinder固有の問題ではない)。写真枚数が多いライブラリ�
 `/photos`と`/photos2`の両方をルートとして登録できるようになる。
 
 ## アップデート手順
+
+**0.4.x（製品名 PhotoFinder）から上げるときは、先に下の
+「PhotoFinder（0.4.x まで）から Okudana へ」を行う。** ボリューム名が変わるため、
+`git pull` だけでは空のボリュームで起動する。0.5.0 以降の更新は、ここからの手順でよい。
 
 **`data`/`models`はDocker named volumeであり、リポジトリのファイルではない**
 (上記「ボリューム」参照)。そのためソースコードの更新それ自体は既存データに
@@ -122,29 +127,62 @@ docker compose --profile cpu up -d      # コンテナを作り直す。volume�
 4. 展開した新しいフォルダに移動し、`docker compose --profile cpu build && docker
    compose --profile cpu up -d` を実行する
 
-**注意点(実機で確認済みの落とし穴)**: docker composeは既定でプロジェクト名
-(≒volume名の接頭辞)を**カレントディレクトリ名**から決める。zipの展開先フォルダ名
-が元のフォルダ名と異なる(例: `photofinder-0.2.0/`のように展開される)と、
-別プロジェクト扱いになり既存の`photofinder_data`/`photofinder_models`
-volumeを見失う — データが消えるわけではない(volume自体はDocker上に残り続ける)
-が、新しいコンテナは空のvolumeで起動してしまい、一見データが消えたように見える。
-これを避けるため`docker-compose.yml`の先頭に`name: photofinder`を明示している
-(フォルダ名に依存しない)。**この行を削除・変更しないこと。**
-万一(古いフォルダ名依存のバージョンで運用していた等の理由で)新しいvolumeが
-作られてしまった場合は、`docker volume ls`で古い方(例:
-`<旧フォルダ名>_photofinder_data`のような名前)が残っているか確認し、
-新しく作られた空のvolumeを`docker compose down -v`で消してから、
-`docker-compose.yml`の`volumes:`定義に`external: true`と`name:`を指定して
-古いvolumeを明示的に指すようにすれば復旧できる:
-```yaml
-volumes:
-  photofinder_data:
-    external: true
-    name: <旧フォルダ名>_photofinder_data
-  photofinder_models:
-    external: true
-    name: <旧フォルダ名>_photofinder_models
+**注意点**: ボリュームの実名は `docker-compose.yml` の `volumes.*.name` で
+`okudana_data` / `okudana_models` に固定している。zipの展開先フォルダ名が
+変わっても、この2つのボリュームを使い続ける。`name:` を消すと、プロジェクト名の
+接頭辞が付いた別ボリューム（空）で起動し、データが消えたように見える。
+データ自体は古いボリュームに残っている。`docker volume ls` で名前を確認し、
+空の方を消してから、定義の `name:` をデータが入っているボリュームへ戻す。
+
+### PhotoFinder（0.4.x まで）から Okudana へ
+
+0.5.0 で製品名と Docker の名前を Okudana に変えた。**通常の `git pull` だけでは
+今までのボリュームを見ない。** 0.4.x の実ボリューム名は、プロジェクト名
+`photofinder` とキー `photofinder_data` / `photofinder_models` から
+`photofinder_photofinder_data` / `photofinder_photofinder_models` になっている
+（`docker volume ls` で確認する。もっと古い、フォルダ名が接頭辞のボリュームなら
+その名前を下のコマンドに使う）。
+
+中身（DB・サムネ・FAISS・モデル）を新しいボリュームへコピーしてから起動する。
+コピーの前に、まだ古い compose ファイルの状態でコンテナを止める。
+
+```bash
+docker compose --profile cpu down    # GPU なら --profile cuda。-v は付けない
+git pull
+git remote set-url origin https://github.com/MeiNogizaka/Okudana.git
+
+docker volume create okudana_data
+docker volume create okudana_models
+docker run --rm \
+  -v photofinder_photofinder_data:/from -v okudana_data:/to \
+  alpine sh -c 'cp -a /from/. /to/'
+docker run --rm \
+  -v photofinder_photofinder_models:/from -v okudana_models:/to \
+  alpine sh -c 'cp -a /from/. /to/'
+
+docker compose --profile cpu up -d --build    # GPU なら --profile cuda
 ```
+
+すでに `git pull` したあとの場合、新しい compose の `docker compose down` は
+プロジェクト `okudana` しか止めない。動いている古いコンテナは次で止める。
+
+```bash
+docker stop $(docker ps -q --filter label=com.docker.compose.project=photofinder)
+```
+
+画面に今までの写真が出ることを確認してから、古いボリュームを消してよい。
+`docker volume rm` は確認前に実行しない。イメージ `photofinder:cpu` /
+`photofinder:cuda` は使わなくなるので、確認後に `docker image rm` してよい。
+
+変えていないもの:
+
+- `.env` の `PHOTO_LIBRARY_PATH`。登録済みの走査ルート（コンテナ内の `/photos/...`）も DB の中に残る。
+- 環境変数 `PHOTOFINDER_DATA` / `PHOTOFINDER_DOCKER` / `PHOTOFINDER_HOST` / `PHOTOFINDER_PORT` / `PHOTOFINDER_BACKUP_MAX_UPLOAD_BYTES`。
+- データディレクトリ内の `photofinder.db`。バックアップ zip の中のファイル名も同じなので、古い zip はそのまま復元できる。
+- 起動コマンド `python -m uvicorn photofinder.main:app`。Python パッケージ名は `photofinder` のまま。
+
+GitHub の旧 URL `https://github.com/MeiNogizaka/Photofinder` は新しいリポジトリへ
+転送される。ローカルのフォルダ名はボリューム名に影響しない。
 
 ### モデル・スキーマの扱い
 
@@ -181,25 +219,24 @@ volume操作は一切不要。復元は数百MB〜数GB規模のブラウザア�
 (実機で動作確認済み)。ライブラリが非常に大きく、ブラウザ経由のzip
 アップロードより生の`tar`/`scp`の方が確実な場合に使う。volume名は
 `docker compose --profile cpu config --format json`で確認できる
-(`name: photofinder`+volumeキー`photofinder_data`から実際には
-`photofinder_photofinder_data`になる):
+(ボリュームの `name:` で固定した `okudana_data`):
 
 ```bash
 docker compose --profile cpu down   # -v は付けない
 docker run --rm \
-  -v photofinder_photofinder_data:/from \
+  -v okudana_data:/from \
   -v "$(pwd)":/backup \
-  alpine tar czf /backup/photofinder_data_backup.tar.gz -C /from .
+  alpine tar czf /backup/okudana_data_backup.tar.gz -C /from .
 ```
 
-`photofinder_data_backup.tar.gz`をUSBメモリ・scp等で新環境に転送し、**新環境で復元**:
+`okudana_data_backup.tar.gz`をUSBメモリ・scp等で新環境に転送し、**新環境で復元**:
 
 ```bash
-docker volume create photofinder_photofinder_data
+docker volume create okudana_data
 docker run --rm \
-  -v photofinder_photofinder_data:/to \
+  -v okudana_data:/to \
   -v "$(pwd)":/backup \
-  alpine tar xzf /backup/photofinder_data_backup.tar.gz -C /to
+  alpine tar xzf /backup/okudana_data_backup.tar.gz -C /to
 docker compose --profile cpu up -d
 ```
 
@@ -247,7 +284,7 @@ README参照)は、ネットワーク経由で他者がアプリと対話でき�
   自体は前提として必要）。
 - `docker ps`で対象コンテナが`Restarting`を繰り返し、ログが
   `exists: yolov8x.onnx` / `done -> /app/models`のようなモデル取得スクリプトの
-  出力ばかりの場合、`docker-compose.yml`の`photofinder-cpu`/`photofinder-cuda`
+  出力ばかりの場合、`docker-compose.yml`の`okudana-cpu`/`okudana-cuda`
   サービスに`build.target: runtime`が抜けている（実機で再現・修正済みの不具合）。
   マルチステージDockerfileで`target`を省略すると**ファイル内最後のステージ**
   （このDockerfileでは`model-fetch`）が既定でビルドされてしまうため、意図せず

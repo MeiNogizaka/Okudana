@@ -1,4 +1,4 @@
-# PhotoFinder 詳細設計書
+# Okudana 詳細設計書
 
 対象読者: 本アプリを実装する開発者（＝あなた自身）。README の概要を前提とする。
 
@@ -270,6 +270,12 @@ def reverse_search(uploaded_image):
   (`POST /api/export/external`、詳細は docs/api-spec.md)。検索窓へのドロップと貼り付けは
   原本検索のまま。受け取りは OS の一時ディレクトリ(上限 256MiB、30分で破棄)で、`data/`
   にも `photos` にも残さない。成功しても `photos.exported_at` は更新しない。
+- **製品名を Okudana に変更** (0.5.0): 画面・ドキュメント・Docker イメージ
+  (`okudana:cpu` / `okudana:cuda` / `okudana:model-fetch`) と compose の
+  プロジェクト名 `okudana`、ボリューム実名 `okudana_data` / `okudana_models`。
+  Python パッケージ `photofinder`、DB ファイル `photofinder.db`、環境変数
+  `PHOTOFINDER_*` は既存データとバックアップのためそのまま。0.4.x からの
+  ボリュームコピーは docs/docker.md。
 - **フルバックアップ/復元**: 週次DBスナップショット(`VACUUM INTO`・DBのみ)を廃止し、
   `data/`ディレクトリ全体(DB・FAISS索引・サムネ/プレビュー・poi.db等)をzipで
   ダウンロード/復元する`photofinder/backup.py`・`POST /api/backup/full`/

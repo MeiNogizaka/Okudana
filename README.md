@@ -1,4 +1,6 @@
-# PhotoFinder — ローカル写真 自然言語検索アプリ
+# Okudana — ローカル写真 自然言語検索アプリ
+
+旧名は PhotoFinder。Python パッケージ名と DB ファイル名（`photofinder.db`）は、既存データとバックアップをそのまま開けるように変えていない。Docker イメージは `okudana:cpu` / `okudana:cuda`。0.4.x からの上げ方は [docs/docker.md](docs/docker.md) の「PhotoFinder（0.4.x まで）から Okudana へ」。
 
 PC ローカル / NAS 上の写真を **日本語の自然言語** と **画像例** で高速検索できる個人用アプリ。
 外部サービス不要・完全ローカル動作がデフォルト。軽量・軽快を最優先した設計。
@@ -70,7 +72,7 @@ PC ローカル / NAS 上の写真を **日本語の自然言語** と **画像�
 ## リポジトリ構成
 
 ```
-photofinder/
+okudana/
 ├── README.md                 ← 本ファイル
 ├── LICENSE                    ← GNU AGPL-3.0 全文
 ├── CLAUDE.md                 ← Claude Code 向けコードベース案内
@@ -289,7 +291,7 @@ Copyright (C) 2026 MeiNogizaka
 物体検出に使用している YOLOv8x（Ultralytics）の学習済みモデルが AGPL-3.0 の対象であり
 （Ultralytics 公式方針: 学習済みモデルは既定で AGPL-3.0、商用の非公開配布には別途
 Enterprise License が必要）、本アプリを配布・公開する以上その条件に合わせる必要があるため、
-PhotoFinder 自体もこのライセンスを選択している。RAW対応で追加した `rawpy` が動的リンクで
+Okudana 自体もこのライセンスを選択している。RAW対応で追加した `rawpy` が動的リンクで
 同梱する `LibRaw` は LGPL-2.1（既にAGPL-3.0のプロジェクトへの追加はライセンス選定に影響しない）。
 
 AGPL-3.0 は通常の GPL と異なり、**ネットワーク経由でソフトウェアと対話できるようにした

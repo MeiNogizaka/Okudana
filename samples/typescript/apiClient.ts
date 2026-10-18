@@ -1,5 +1,5 @@
 /**
- * PhotoFinder API クライアント（型付き）
+ * Okudana API クライアント（型付き）
  * docs/api-spec.md に対応。fetch ベース・依存ゼロ。
  */
 

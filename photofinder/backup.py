@@ -210,7 +210,7 @@ def validate_backup_zip(zf: zipfile.ZipFile, data_dir: Path) -> dict:
     """
     names = set(zf.namelist())
     if MANIFEST_NAME not in names:
-        raise ValueError(f"{MANIFEST_NAME} not found - not a PhotoFinder backup")
+        raise ValueError(f"{MANIFEST_NAME} not found - not an Okudana backup")
     if DB_ARCNAME not in names:
         raise ValueError(f"{DB_ARCNAME} not found in backup")
 

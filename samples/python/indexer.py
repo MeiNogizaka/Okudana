@@ -1,4 +1,4 @@
-"""PhotoFinder 差分インデクサ（サンプル実装）
+"""Okudana 差分インデクサ（サンプル実装）
 
 使い方:
     python indexer.py --roots "D:\\Photos" "\\\\NAS\\photo" --ext jpg;jpeg;png;heic --data ./data

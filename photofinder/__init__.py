@@ -1,4 +1,4 @@
-"""PhotoFinder — ローカル写真検索アプリ (Docker配布版)。
+"""Okudana — ローカル写真検索アプリ (Docker配布版。旧名 PhotoFinder)。
 
 app2/photofinder (0.6.1) からのフォーク。Windows exe配布を廃止しDocker専用
 (CPU/CUDAの2バリアント) に移行、RAW対応、FAISS/RRFチューニング、人手タグの
@@ -57,6 +57,10 @@ app2/photofinder (0.6.1) からのフォーク。Windows exe配布を廃止しDo
 0.4.3: ライブラリに入っていない画像の書き出し。ヘッダーの「外部画像」を
        クリックするか、そのボタンへドロップすると、索引に加えずに同じ
        書き出し画面が開く。一時ファイルは data/ には置かない
+0.5.0: 製品名を Okudana に変更。Docker イメージは okudana:cpu / okudana:cuda、
+       ボリューム実名は okudana_data / okudana_models。Python パッケージ名、
+       photofinder.db、環境変数 PHOTOFINDER_* は既存データを開けるように
+       そのまま。0.4.x からのボリュームの移し方は docs/docker.md
 """
 
-__version__ = "0.4.3"
+__version__ = "0.5.0"

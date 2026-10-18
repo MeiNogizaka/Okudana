@@ -25,7 +25,7 @@ from .paths import data_dir
 log = logging.getLogger("photofinder.poi_fetch")
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-UA = {"User-Agent": "PhotoFinder-personal/0.1 (local photo indexer)"}
+UA = {"User-Agent": "Okudana-personal/0.1 (local photo indexer)"}
 
 PREF_ISO = {
     "北海道": "JP-01", "青森県": "JP-02", "岩手県": "JP-03", "宮城県": "JP-04",
