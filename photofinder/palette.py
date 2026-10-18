@@ -28,7 +28,7 @@ ACCENT_MIN_CHROMA = 0.08   # その色を「鮮やか」とみなす OKLab 彩�
 # 彩度がこれ未満なら色相名を付けず、白・灰・黒として扱う
 HUE_CHROMA_MIN = 0.03
 # 活動性。彩度だけで決める（明度と覚醒の向きは研究間で一致しない。docs/palette.md）
-# この値以上の彩度のときだけ、色相ごとの覚醒を含む一文を足す
+# この値以上の彩度のときだけ、色相ごとの印象の一文を足す
 ACTIVITY_CALM = 0.12
 # 重さ。OKLab の L
 WEIGHT_HEAVY = 0.45
@@ -151,7 +151,11 @@ def colors_from_json(text: str | None) -> list[dict] | None:
 
 
 def describe_hex(hex_code: str) -> dict:
-    """#RRGGBB から色名と印象語を返す。ratio は付けない。"""
+    """#RRGGBB から色名と印象文を返す。ratio は付けない。
+
+    3語は暖寒・重軽・活動性。hue_note は、色票や色名の研究で繰り返された
+    感情語を日常の文にしたもの。尺度の名前は出さない。根拠は docs/palette.md。
+    """
     L, C, h = _oklch_of_hex(hex_code)
     name, hue_note = _category(L, C, h)
     return {
@@ -166,13 +170,13 @@ def describe_hex(hex_code: str) -> dict:
 
 def _temperature(C: float, h: float) -> str:
     if C < HUE_CHROMA_MIN:
-        return "温度感は弱い"
+        return "温度は感じにくい"
     score = C * math.cos(math.radians(h - WARM_PEAK_DEG))
     if score >= WARM_SCORE:
-        return "暖かい"
+        return "暖かみがある"
     if score <= -WARM_SCORE:
-        return "涼しい"
-    return "温度感は弱い"
+        return "涼しさがある"
+    return "温度は感じにくい"
 
 
 def _weight(L: float) -> str:
@@ -180,7 +184,7 @@ def _weight(L: float) -> str:
         return "重い"
     if L > WEIGHT_LIGHT:
         return "軽い"
-    return "中くらいの重さ"
+    return "重くも軽くもない"
 
 
 def _activity(C: float) -> str:
@@ -192,36 +196,41 @@ def _activity(C: float) -> str:
 
 
 def _category(L: float, C: float, h: float) -> tuple[str, str | None]:
+    # 一文は docs/palette.md の対応を日常語にしたもの。快・覚醒などの尺度名は出さない。
     if C < HUE_CHROMA_MIN:
         if L >= WHITE_L:
-            return "白", "前向きで、覚醒は低め"
+            return "白", "ほっとした気持ちや、希望と結びつきやすい。"
         if L <= BLACK_L:
-            return "黒", "否定寄りで、覚醒は高め。暗い色は支配感が強い"
-        return "灰", "覚醒が低く、否定寄り"
+            return "黒", "悲しみや恐れ、怒りと結びつきやすい。暗いほど、圧がある。"
+        # 色名の灰は沈んだ気持ちと結びつく。ただし明るい色は快に寄るので、
+        # 重さの「軽い」に入る灰には、その沈んだ文を付けない。
+        if L > WEIGHT_LIGHT:
+            return "灰", None
+        return "灰", "退屈や悲しみ、がっかりした気持ちと結びつきやすい。"
     # 呼び方に明度が織り込まれているものから先に分ける
     if L >= 0.80 and C < 0.08 and 40.0 <= h <= 115.0:
         return "ベージュ", None
     if L < BROWN_L and C < BROWN_C_MAX and 30.0 <= h <= 115.0:
-        return "茶", "黄橙の暗色。重く、地に足がついた印象。否定寄りの報告もある"
+        return "茶", "嫌悪と結びつきやすく、あまり好まれない。"
     if L >= PINK_L and (h <= 45.0 or h >= 330.0):
-        return "桃", "前向きで、柔らかい"
+        return "桃", "愛情やうれしさがあり、明るくて柔らかい。"
     if h < 40.0 or h >= 345.0:
-        name, note = "赤", "高覚醒で、力と、快・緊張の両方がある"
+        name, note = "赤", "愛情や情熱があり、怒りや緊張もある。どれも力が強い。"
     elif h < 75.0:
-        name, note = "橙", "前向きで、覚醒が高い"
+        name, note = "橙", "楽しさや、わくわくする感じが出る。"
     elif h < 115.0:
-        name, note = "黄", "前向きで、覚醒が高い"
+        name, note = "黄", "うれしさがまっさきに来る。楽しさもある。"
     elif h < 165.0:
-        name, note = "緑", "前向きで、覚醒は低め"
+        name, note = "緑", "落ち着いていて、心地よい。"
     elif h < 210.0:
-        name, note = "青緑", "前向きで、覚醒は低め"
+        name, note = "青緑", "落ち着いていて、心地よい。"
     elif h < 275.0:
-        name, note = "青", "前向きで、覚醒は低め"
+        name, note = "青", "落ち着いていて、心地よい。寂しさと結びつくこともある。"
     elif h < 330.0:
-        name, note = "紫", "力と格式"
+        name, note = "紫", "誇らしさや力が出る。落ち着きとも、恐れとも言われる。"
     else:
-        name, note = "赤", "高覚醒で、力と、快・緊張の両方がある"
-    # 色相の一文は、その色相らしい彩度があるときだけ。薄い色は3軸だけにする
+        name, note = "赤", "愛情や情熱があり、怒りや緊張もある。どれも力が強い。"
+    # 色相の一文は、その色相らしい彩度があるときだけ。薄い色は3語だけにする
     if C < ACTIVITY_CALM:
         return name, None
     return name, note

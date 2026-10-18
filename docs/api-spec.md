@@ -151,13 +151,13 @@
   ],
   "palette": [
     { "hex": "#3A6B4C", "ratio": 0.42, "name": "緑",
-      "temperature": "涼しい", "weight": "中くらいの重さ", "activity": "穏やか",
+      "temperature": "涼しさがある", "weight": "重くも軽くもない", "activity": "穏やか",
       "hue_note": null }
   ]
 }
 ```
 
-`palette` は未作成なら `null`。`ratio` は画素の割合で、端の色を捨てるため合計が 1 未満になることがある。`hue_note` は彩度が十分なときだけ文字列、それ以外は `null`。印象文の組み立ては [palette.md](palette.md)。
+`palette` は未作成なら `null`。`ratio` は画素の割合で、端の色を捨てるため合計が 1 未満になることがある。`hue_note` は白・黒・茶・桃、および明るくない灰では文字列になる。それ以外の色相は彩度が十分なときだけ文字列で、薄い色と明るい灰は `null`。印象文の組み立ては [palette.md](palette.md)。
 
 ## SNS投稿リンク・重複投稿防止 (`/photos/{id}/posts*`)
 
