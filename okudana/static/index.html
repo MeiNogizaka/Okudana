@@ -450,7 +450,7 @@
   <button id="settingsBtn" class="ghost" style="font-size:11px;padding:3px 10px" title="設定">⚙ 設定</button>
 </footer>
 
-<dialog id="setDlg" style="min-width:520px">
+<dialog id="setDlg" style="min-width:560px">
   <b>設定</b>
 
   <p class="lbl" style="margin-top:14px">対象フォルダ</p>
@@ -497,10 +497,15 @@
   </div>
   <p class="lbl" style="margin-top:16px">場所データ (OSM POI)</p>
   <div id="setPoiList" class="roots-list" style="margin-bottom:8px">確認中…</div>
+  <p style="font-size:11.5px; color:var(--ink2); margin:0 0 6px">
+    国を選ぶと、その中の地域が出ます。国全体では取得しません。
+  </p>
   <div style="display:flex; gap:6px; align-items:center; margin-bottom:8px">
-    <select id="poiPrefSelect" style="flex:1; background:var(--paper); color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:12.5px"></select>
-    <button id="poiFetchBtn" class="ghost" style="font-size:11.5px; flex:none">取得</button>
+    <select id="poiCountrySelect" title="国" style="flex:1; min-width:0; background:var(--paper); color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:12.5px"></select>
+    <select id="poiRegionSelect" title="地域" style="flex:1.3; min-width:0; background:var(--paper); color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:12.5px" disabled></select>
+    <button id="poiFetchBtn" class="ghost" style="font-size:11.5px; flex:none" disabled>取得</button>
   </div>
+  <div id="poiRegionHint" style="font-size:11.5px; color:var(--ink2); margin-bottom:4px"></div>
   <div id="poiFetchStatus" style="font-size:11.5px; color:var(--ink2); margin-bottom:10px"></div>
   <div class="btns">
     <button id="setPoiApply" class="ghost" style="font-size:11.5px">POIを写真に再適用</button>
@@ -2546,29 +2551,33 @@ $("setPoiApply").onclick = async () => {
   }
 };
 
-// --- 場所データ (OSM POI): 都道府県ごとの取得/削除 + カスタム地点 -----------
+// --- 場所データ (OSM POI): 国 → 地域の取得/削除 + カスタム地点 -----------
+// 国全体の選択肢は置かない。理由は docs/data-schema.md の POI 節。
 
-let poiPrefsCache = null;
+let poiFetchedKeys = new Set();
+let poiRegionToken = 0;
+let poiRegionsByIso = new Map();
 
 async function refreshPoiSection() {
   const status = await api("/geo/poi-status");
   const prefRows = status.prefs.filter(p => p.pref !== "manual");
+  poiFetchedKeys = new Set(prefRows.map(p => p.pref));
 
-  // 都道府県一覧
   const box = $("setPoiList");
   box.innerHTML = "";
   if (!prefRows.length) {
-    box.innerHTML = '<span style="color:var(--ink2); font-size:12px">場所データが未取得です（下から都道府県を選んで取得してください）</span>';
+    box.innerHTML = '<span style="color:var(--ink2); font-size:12px">場所データが未取得です（下から国と地域を選んで取得してください）</span>';
   } else {
     for (const p of prefRows) {
+      const label = p.label || p.pref;
       const row = document.createElement("div");
       row.className = "root-row";
       row.innerHTML = `
-        <span class="path" style="font-family:inherit">${esc(p.pref)}</span>
+        <span class="path" style="font-family:inherit">${esc(label)}</span>
         <small>${p.count.toLocaleString()}件 · ${esc(p.fetched_at.slice(0, 10))}</small>
         <button class="ghost" style="font-size:11px; padding:2px 10px; flex:none" data-del-pref>削除</button>`;
       row.querySelector("[data-del-pref]").onclick = async () => {
-        if (!confirm(`${p.pref}の場所データを削除しますか？`)) return;
+        if (!confirm(`${label}の場所データを削除しますか？`)) return;
         await api(`/geo/poi/prefecture/${encodeURIComponent(p.pref)}`, {method: "DELETE"});
         await refreshPoiSection();
       };
@@ -2576,13 +2585,21 @@ async function refreshPoiSection() {
     }
   }
 
-  // 取得フォーム: 未取得の県のみ選択肢に出す
-  if (!poiPrefsCache) poiPrefsCache = await api("/geo/prefectures");
-  const fetchedSet = new Set(prefRows.map(p => p.pref));
-  const sel = $("poiPrefSelect");
-  sel.innerHTML = poiPrefsCache
-    .filter(p => !fetchedSet.has(p))
-    .map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
+  const countrySel = $("poiCountrySelect");
+  const prevCountry = countrySel.value;
+  try {
+    const countries = await api("/geo/countries");
+    countrySel.innerHTML = countries.map(c => {
+      const n = c.photo_count ? ` (${c.photo_count})` : "";
+      return `<option value="${esc(c.code)}">${esc(c.name)}${n}</option>`;
+    }).join("");
+    if (prevCountry && [...countrySel.options].some(o => o.value === prevCountry)) {
+      countrySel.value = prevCountry;
+    }
+    await loadPoiRegions();
+  } catch (err) {
+    $("poiRegionHint").textContent = "国一覧の取得に失敗しました: " + err.message;
+  }
 
   // カスタム地点一覧 (常時全件表示)
   const customs = await api("/geo/poi/custom");
@@ -2607,26 +2624,72 @@ async function refreshPoiSection() {
   }
 }
 
-$("poiFetchBtn").onclick = async () => {
-  const pref = $("poiPrefSelect").value;
-  if (!pref) return;
-  $("poiFetchBtn").disabled = true;
-  $("poiFetchStatus").textContent = `${pref}を取得中…（数十秒〜数分かかります）`;
+async function loadPoiRegions() {
+  const code = $("poiCountrySelect").value;
+  const token = ++poiRegionToken;
+  const sel = $("poiRegionSelect");
+  const hint = $("poiRegionHint");
+  const btn = $("poiFetchBtn");
+  sel.innerHTML = "";
+  sel.disabled = true;
+  btn.disabled = true;
+  poiRegionsByIso = new Map();
+  if (!code) {
+    hint.textContent = "";
+    return;
+  }
+  hint.textContent = "地域を読み込み中…";
+  let regions;
   try {
-    await api("/geo/poi/fetch", {
+    regions = await api("/geo/countries/" + encodeURIComponent(code) + "/regions");
+  } catch (err) {
+    if (token !== poiRegionToken) return;
+    hint.textContent = "地域の取得に失敗しました: " + err.message;
+    return;
+  }
+  if (token !== poiRegionToken) return;
+  const available = regions.filter(r => !poiFetchedKeys.has(r.key));
+  if (!regions.length) {
+    hint.textContent = "この国の地域区分は見つかりませんでした。地点は下のカスタム地点で追加できます。";
+    return;
+  }
+  if (!available.length) {
+    hint.textContent = "この国の地域は取得済みです。";
+    return;
+  }
+  poiRegionsByIso = new Map(available.map(r => [r.iso, r]));
+  sel.innerHTML = available.map(r =>
+    `<option value="${esc(r.iso)}">${esc(r.name)}</option>`).join("");
+  sel.disabled = false;
+  btn.disabled = false;
+  hint.textContent = "";
+}
+
+$("poiCountrySelect").addEventListener("change", () => { loadPoiRegions(); });
+
+$("poiFetchBtn").onclick = async () => {
+  const region = poiRegionsByIso.get($("poiRegionSelect").value);
+  if (!region) return;
+  $("poiFetchBtn").disabled = true;
+  $("poiFetchStatus").textContent = `${region.name}を取得中…（数十秒〜数分かかります）`;
+  try {
+    const started = await api("/geo/poi/fetch", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({pref}),
+      body: JSON.stringify({iso: region.iso, name: region.name}),
     });
-    // バックグラウンド取得の完了をポーリング
+    if (started.started === false) {
+      $("poiFetchStatus").textContent = "別の地域を取得中です";
+      return;
+    }
     while (true) {
       await new Promise(r => setTimeout(r, 2000));
       const s = await api("/geo/poi/fetch-status");
       if (!s.running) {
         if (s.error) { $("poiFetchStatus").textContent = "エラー: " + s.error; }
         else {
-          $("poiFetchStatus").textContent = `${pref}の取得完了`;
+          $("poiFetchStatus").textContent = `${region.name}の取得完了`;
           await refreshPoiSection();
-          await api("/geo/refresh-poi", {method: "POST"});  // 反映まで自動で行う
+          await api("/geo/refresh-poi", {method: "POST"});
         }
         break;
       }
@@ -2634,7 +2697,7 @@ $("poiFetchBtn").onclick = async () => {
   } catch (err) {
     $("poiFetchStatus").textContent = "エラー: " + err.message;
   } finally {
-    $("poiFetchBtn").disabled = false;
+    $("poiFetchBtn").disabled = !$("poiRegionSelect").value;
     setTimeout(() => { $("poiFetchStatus").textContent = ""; }, 6000);
   }
 };

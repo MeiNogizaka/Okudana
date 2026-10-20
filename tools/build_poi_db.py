@@ -1,19 +1,21 @@
 """OSM POI データベースの構築・更新ツール (CLI)。
 
 実体は okudana/poi_fetch.py に共通化（実行中サーバの設定画面からも同じ処理を呼べる）。
-本 CLI はサーバを起動せずまとめて複数県を取得したい場合に使う。
+本 CLI はサーバを起動せずまとめて複数地域を取得したい場合に使う。
 
 使い方:
-    # 取得/更新 (都道府県名で指定。再実行するとその県のデータを丸ごと入れ替え = 更新)
-    .venv\\Scripts\\python.exe tools\\build_poi_db.py 京都府 大阪府
+    # 取得/更新 (都道府県名、または ISO 3166-2。再実行するとその地域を入れ替え)
+    python tools/build_poi_db.py 京都府 大阪府
+    python tools/build_poi_db.py US-CA FR-IDF
 
     # 状態確認
-    .venv\\Scripts\\python.exe tools\\build_poi_db.py --status
+    python tools/build_poi_db.py --status
 
+国コードだけ（JP や US）は指定できない。理由は docs/data-schema.md の POI 節。
 対象タグ: 観光地・史跡・公園・寺社・展望塔・駅など「写真の撮影地になりうる地点」。
 飲食店等の大量 POI は意図的に除外（撮影地タグとしてノイズになるため）。
 データは ODbL ライセンス (© OpenStreetMap contributors)。
-アプリの 設定 → 場所データ から都道府県の追加/削除、カスタム地点の追加/削除もできる。
+アプリの 設定 → 場所データ から国と地域の追加/削除、カスタム地点の追加/削除もできる。
 """
 from __future__ import annotations
 
@@ -24,24 +26,28 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from okudana.poi_fetch import (  # noqa: E402
-    PREF_ISO, POI_DB, fetch_pref, open_poi_db, store_pref,
+    PREF_ISO, POI_DB, fetch_by_iso, open_poi_db, resolve_fetch_target, store_pref,
 )
 
 
 def show_status(db) -> None:
     rows = db.execute("SELECT * FROM poi_meta ORDER BY pref").fetchall()
     if not rows:
-        print("POI データ未取得。例: python tools\\build_poi_db.py 京都府")
+        print("POI データ未取得。例: python tools/build_poi_db.py 京都府")
         return
     total = db.execute("SELECT count(*) FROM pois").fetchone()[0]
     for r in rows:
-        print(f"  {r['pref']}: {r['count']:,}件 (取得 {r['fetched_at'][:10]})")
+        name = r["label"] or r["pref"]
+        print(f"  {name}: {r['count']:,}件 (取得 {r['fetched_at'][:10]})")
     print(f"  合計 {total:,}件 / {POI_DB} ({POI_DB.stat().st_size // 1024:,} KB)")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("prefs", nargs="*", help="都道府県名 (例: 京都府 大阪府)")
+    ap.add_argument(
+        "prefs", nargs="*",
+        help="都道府県名、または ISO 3166-2 (例: 京都府 US-CA)。国コードだけは不可",
+    )
     ap.add_argument("--status", action="store_true")
     args = ap.parse_args()
 
@@ -50,12 +56,18 @@ def main() -> None:
         show_status(db)
         return
     for pref in args.prefs:
-        if pref not in PREF_ISO:
-            print(f"不明な都道府県名: {pref}", file=sys.stderr)
+        try:
+            if pref in PREF_ISO:
+                target = resolve_fetch_target(pref=pref)
+            else:
+                target = resolve_fetch_target(iso=pref)
+        except ValueError as e:
+            print(f"{pref}: {e}", file=sys.stderr)
             continue
-        print(f"{pref}: Overpass API から取得中… (数十秒〜数分)")
-        pois = fetch_pref(pref)
-        store_pref(db, pref, pois)
+        label = target["label"] or target["pref"]
+        print(f"{label}: Overpass API から取得中… (数十秒〜数分)")
+        pois = fetch_by_iso(target["iso"])
+        store_pref(db, target["pref"], pois, label=target["label"])
         print(f"  -> {len(pois):,}件 保存")
         time.sleep(5)  # Overpass への連続リクエストを控えめに
     print("完了。写真への反映: アプリの 設定 →「POIを写真に再適用」"

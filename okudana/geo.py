@@ -15,7 +15,7 @@ import sqlite3
 import threading
 
 from .db import LockedConnection
-from .poi_fetch import POI_DB  # 定義元は poi_fetch.py (単一の定義元)
+from .poi_fetch import POI_DB, ensure_poi_schema  # 定義元は poi_fetch.py (単一の定義元)
 
 log = logging.getLogger("okudana.geo")
 POI_RADIUS_M = 150.0    # 主 POI: この距離以内のみ採用
@@ -122,6 +122,8 @@ def _open_poi_db() -> LockedConnection | None:
             return None
         conn = sqlite3.connect(POI_DB, check_same_thread=False)
         conn.row_factory = sqlite3.Row
+        # この接続は open_poi_db() を通らない。label 列の追加はここで行う。
+        ensure_poi_schema(conn)
         _poi_db = LockedConnection(conn)
         return _poi_db
 

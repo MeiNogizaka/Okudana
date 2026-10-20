@@ -68,8 +68,10 @@ python3 -m venv .venv
 .venv/bin/python tools/make_sample_photos.py
 .venv/bin/python tools/fetch_test_photos.py
 
-# Fetch OSM POI data for a prefecture (also doable from the Settings UI)
+# Fetch OSM POI data for one region (Japanese prefecture name or ISO 3166-2).
+# A country code alone (JP, US) is rejected. See docs/data-schema.md.
 .venv/bin/python tools/build_poi_db.py 京都府 大阪府
+.venv/bin/python tools/build_poi_db.py US-CA
 
 # Evaluate AI auto-tag accuracy against human confirm/reject decisions (verified!=0).
 # Takes the zip from POST /api/export/dataset (also downloadable from Settings UI)
@@ -91,8 +93,18 @@ SQLite (WAL mode, `okudana/schema.sql` is the sole DDL source of truth — never
 into docs) for metadata + FTS5 full-text, FAISS (`IndexHNSWFlat`, file-backed) for embedding vectors,
 and the filesystem for WebP thumbnails/previews. FAISS vector IDs are `photos.id` directly — no
 separate mapping table. A second, independent SQLite file (`data/poi.db`) holds OSM POI data and is
-never joined against the main DB; `geo.py` queries it directly at request time. **`--workers 1` is
-mandatory** for any deployment (Docker `CMD` already enforces this) — `db` and `vstore` are
+never joined against the main DB; `geo.py` queries it directly at request time.
+
+**POI fetch is one administrative region, never a whole country.** Settings picks a
+country, then one ISO 3166-2 / OSM `admin_level=4` region (Japan stays the 47
+prefecture names). Do not add a 「この国すべて」 control or an `admin_level=2`
+query. One prefecture already takes tens of seconds to minutes and thousands to
+~20k rows (Overpass timeout 300s); a whole country would blow the timeout and
+`poi.db`. Japan store keys stay the Japanese name. Other countries use the ISO
+code as `pois.pref` and a display `poi_meta.label`. The missing-prefecture banner
+lists Japanese names only. Reason: [docs/data-schema.md](docs/data-schema.md).
+
+**`--workers 1` is mandatory** for any deployment (Docker `CMD` already enforces this) — `db` and `vstore` are
 module-level singletons in `main.py`; multiple uvicorn workers would each hold independent
 FAISS/SQLite state and race on writes.
 

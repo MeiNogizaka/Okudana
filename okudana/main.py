@@ -1311,7 +1311,7 @@ def poi_status():
 def refresh_poi():
     """POI データ更新後、GPS を持つ全写真に場所名を再適用する (画像の再解析なし)。
 
-    運用フロー: 設定画面で都道府県を取得/更新 (または tools/build_poi_db.py) → 本エンドポイント。
+    運用フロー: 設定画面で地域を取得/更新 (または tools/build_poi_db.py) → 本エンドポイント。
     """
     from .fts import update_fts
     from .geo import invalidate_poi_db, reverse_geocode
@@ -1347,20 +1347,60 @@ def refresh_poi():
     return {"photos_with_gps": len(rows), "updated": updated}
 
 
+@app.get("/api/geo/countries")
+def geo_countries():
+    """国一覧。写真が多い国が先。同数は名前順。未知のコードも名前なしで残す。"""
+    from .countries import COUNTRIES
+    counts = {
+        r["country"]: r["c"]
+        for r in db.execute(
+            """SELECT g.country AS country, COUNT(*) AS c
+               FROM geo g JOIN photos p ON p.id = g.photo_id
+               WHERE p.deleted=0 AND g.country IS NOT NULL AND g.country != ''
+               GROUP BY g.country"""
+        )
+    }
+    items = [
+        {"code": code, "name": name, "photo_count": counts.get(code, 0)}
+        for code, name in COUNTRIES.items()
+    ]
+    for code, c in counts.items():
+        if code not in COUNTRIES:
+            items.append({"code": code, "name": code, "photo_count": c})
+    items.sort(key=lambda x: (-x["photo_count"], x["name"]))
+    return items
+
+
+@app.get("/api/geo/countries/{code}/regions")
+def geo_country_regions(code: str):
+    """国の中の地域 (admin_level=4)。国全体の要素は返さない。"""
+    from . import poi_fetch
+    try:
+        return poi_fetch.list_regions(code)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    except Exception as e:
+        log.warning("region list failed: %s", e)
+        msg = str(e)
+        if len(msg) > 180:
+            msg = msg[:180]
+        raise HTTPException(502, f"地域一覧の取得に失敗しました: {msg}") from e
+
+
 @app.get("/api/geo/prefectures")
 def geo_prefectures():
-    """都道府県名の一覧 (POI取得フォームのドロップダウン用)。"""
+    """都道府県名の一覧。未取得バナーと互換用。設定の取得フォームは国と地域を使う。"""
     from .poi_fetch import PREF_ISO
     return list(PREF_ISO.keys())
 
 
 @app.get("/api/geo/missing-prefectures")
 def missing_prefectures():
-    """写真の撮影地に含まれるが POI データが未取得の都道府県 (件数付き)。
+    """写真の撮影地に含まれるが POI 未取得の日本の都道府県 (件数付き)。
 
-    「北海道の写真があるがデータがない」提案バナー用。
+    提案バナー用。国外の admin1（"California" など）は保存キーと一致しないので出さない。
     """
-    from .poi_fetch import open_poi_db
+    from .poi_fetch import PREF_ISO, open_poi_db
     have = db.execute(
         """SELECT g.prefecture, count(*) AS c FROM geo g
            JOIN photos p ON p.id = g.photo_id
@@ -1373,20 +1413,32 @@ def missing_prefectures():
     finally:
         pdb.close()
     return [{"prefecture": r["prefecture"], "photo_count": r["c"]}
-            for r in have if r["prefecture"] not in fetched]
+            for r in have
+            if r["prefecture"] in PREF_ISO and r["prefecture"] not in fetched]
 
 
 @app.post("/api/geo/poi/fetch")
 def fetch_poi(body: dict = Body(...)):
-    """都道府県のPOIをOverpass APIから取得しDBへ格納 (バックグラウンド実行)。"""
+    """1地域の POI を Overpass API から取得し DB へ格納する (バックグラウンド)。
+
+    `{pref}` は日本の都道府県名。`{iso, name}` は ISO 3166-2。
+    国コードだけ（`US` など）は 422。国全体の取得はしない。
+    """
     from . import poi_fetch
     pref = (body.get("pref") or "").strip()
-    if pref not in poi_fetch.PREF_ISO:
-        raise HTTPException(422, f"unknown prefecture: {pref}")
-    if poi_fetch.STATUS.running:
-        return {"started": False, "reason": "fetch already running"}
-    threading.Thread(target=poi_fetch.fetch_and_store, args=(pref,), daemon=True).start()
-    return {"started": True, "pref": pref}
+    iso = (body.get("iso") or "").strip()
+    name = (body.get("name") or "").strip()
+    try:
+        if pref:
+            target = poi_fetch.resolve_fetch_target(pref=pref)
+        elif iso:
+            target = poi_fetch.resolve_fetch_target(iso=iso, name=name or None)
+        else:
+            raise ValueError("pref or iso is required")
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    return poi_fetch.fetch_and_store(
+        target["pref"], label=target["label"], iso=target["iso"])
 
 
 @app.get("/api/geo/poi/fetch-status")

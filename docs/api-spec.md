@@ -39,13 +39,15 @@
 | POST | `/index/rebuild-vectors` | ベクトル索引を再構築（重複・削除済みベクトルを除去） |
 | GET | `/settings` / PATCH `/settings` | アプリ設定。真偽値は `scan_on_startup` と `palette_note`（未設定は `true`）。`palette_layout` は `horizontal`（既定）/ `vertical` / `hidden`。旧 `show_palette=0` だけが残っている場合は `hidden` として読む |
 | POST | `/shutdown` | アプリを終了する（設定画面の「終了」ボタンから呼ばれる。応答を返してから `os._exit()`。Dockerでは`docker stop`と実質等価だが、UIからの明示終了手段として維持） |
-| GET | `/geo/poi-status` | OSM POI データの取得状況（県別件数・取得日、`pref="manual"` はカスタム地点） |
+| GET | `/geo/poi-status` | OSM POI の取得状況。`prefs[]` は `pref`（保存キー）・`label`（表示名、日本は null）・件数・取得日。`pref="manual"` はカスタム地点 |
 | POST | `/geo/refresh-poi` | POI 更新後、GPS 持ち全写真へ場所名を再適用（画像再解析なし） |
-| GET | `/geo/prefectures` | 都道府県名 47件のリスト（POI 取得フォームのドロップダウン用） |
-| GET | `/geo/missing-prefectures` | 写真の撮影地にあるが POI 未取得の都道府県（`photo_count` 付き） |
-| POST | `/geo/poi/fetch` | `{pref}` の POI を Overpass API から取得（バックグラウンド実行） |
-| GET | `/geo/poi/fetch-status` | POI 取得の進捗（`running`・`pref`・`error`） |
-| DELETE | `/geo/poi/prefecture/{pref}` | 指定都道府県の POI データを削除 |
+| GET | `/geo/countries` | 国一覧 `[{code, name, photo_count}]`。写真が多い順、同数は名前順。未知の国コードは `name` にコードを入れる |
+| GET | `/geo/countries/{code}/regions` | その国の地域 `[{iso, name, key}]`（OSM `admin_level=4` / ISO 3166-2）。日本はネットワークなしの47都道府県で、`key` は都道府県名。他国の `key` は ISO コード。国全体の要素は無い。不明な国は 422、Overpass 失敗は 502 |
+| GET | `/geo/prefectures` | 都道府県名 47件（未取得バナーと互換。設定の取得フォームは国と地域を使う） |
+| GET | `/geo/missing-prefectures` | 写真の撮影地にあり POI 未取得の**日本の都道府県**だけ（`photo_count` 付き）。国外の admin1 名は出さない |
+| POST | `/geo/poi/fetch` | 1地域を取得（バックグラウンド）。`{pref}` は日本の都道府県名。`{iso, name}` は ISO 3166-2（`name` は表示用）。`US` や `JP` のような国コードだけは 422（国全体は取得しない。理由は [data-schema.md](data-schema.md) の POI 節） |
+| GET | `/geo/poi/fetch-status` | POI 取得の進捗（`running`・`pref`・`error`）。`pref` は進行中の表示名 |
+| DELETE | `/geo/poi/prefecture/{pref}` | 保存キー（都道府県名、または `US-CA` のような ISO コード）の POI を削除 |
 | GET | `/geo/poi/search?q=` | POI 名でオートコンプリート検索 |
 | GET | `/geo/poi/custom` | ユーザ手動追加したカスタム地点の一覧 |
 | POST | `/geo/poi` | カスタム地点を手動追加 `{name, lat, lon}`（近傍検索に自動反映） |

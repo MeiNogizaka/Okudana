@@ -169,18 +169,36 @@ CREATE TABLE pois (
     osm_id TEXT NOT NULL,     -- 'node/123' 'way/456' / 手動地点は 'manual/<uuid>'
     name   TEXT NOT NULL,
     kind   TEXT NOT NULL,     -- 'tourism=viewpoint' 等の代表タグ / 手動は 'manual'
-    pref   TEXT NOT NULL,     -- 取得単位の都道府県名。手動地点は 'manual'
+    pref   TEXT NOT NULL,     -- 取得単位のキー。日本は都道府県名、国外は ISO 3166-2、手動は 'manual'
     lat REAL NOT NULL, lon REAL NOT NULL,
     UNIQUE (pref, osm_id)
 );
 CREATE VIRTUAL TABLE poi_rtree USING rtree(id, min_lat, max_lat, min_lon, max_lon);
-CREATE TABLE poi_meta (pref TEXT PRIMARY KEY, fetched_at TEXT NOT NULL, count INTEGER NOT NULL);
+CREATE TABLE poi_meta (
+    pref TEXT PRIMARY KEY,
+    fetched_at TEXT NOT NULL,
+    count INTEGER NOT NULL,
+    label TEXT                 -- 表示名。日本は NULL。国外は「国名 / 地域名」
+);
 ```
 
-- **更新単位は都道府県**: `pref` ごとに丸ごと入れ替え（`store_pref`）。取得し直すとその県のデータだけ置き換わる
+既存の `poi.db` は `CREATE TABLE IF NOT EXISTS` では列が増えない。`ensure_poi_schema()`
+が `poi_meta.label` を `ALTER TABLE` で足す（`open_poi_db()` と、`geo.py` の常駐接続の両方）。
+
+- **更新単位は1地域**: `pref` ごとに丸ごと入れ替え（`store_pref`）。日本のキーは都道府県名のまま
+  （`京都府` など。`JP-26` には書き換えない）。国外のキーは `US-CA` のような ISO 3166-2 で、
+  画面に出す名前は `label`（例: `アメリカ / California`）。`label` を付けない再取得は、
+  入っている表示名を消さない
+- **国全体では取得しない**: 設定画面に「この国すべて」は無い。API も国コードだけ
+  （`JP` や `US`、ISO 3166-1 / `admin_level=2`）は 422 で拒む。1つの都道府県でも
+  Overpass は数十秒〜数分、件数は数千〜約2万（タイムアウト 300 秒。例: 京都府 17,358件、
+  大阪府 19,837件、鳥取県 2,319件）。日本全体やアメリカ、中国を1クエリにすると制限時間を超え、
+  `poi.db` も肥大する。取得の粒度は都道府県と同じ `admin_level=4` の1地域だけにする。
+  イングランドのように大きい地域が時間切れになっても、国全体へ広げることはしない。
+  そのときはエラーを出し、地点はカスタム地点で足す
 - **手動地点の pref は `'manual'`**: 近傍検索 (`poi_lookup`) は `pref` を問わず bbox 検索するため、
-  カスタム地点も取得済み POI と同列に扱われ自動的にマッチ対象になる
-- データ量の目安: 1都道府県あたり数千〜2万件程度（例: 京都府 17,358件、大阪府 19,837件、鳥取県 2,319件）
+  カスタム地点も取得済み POI と同列に扱われ自動的にマッチ対象になる。写真ごとの場所名の手修正もそのまま
+- 市区町村名は GeoNames の逆ジオコーディング（国を問わない）で別途付く。POI の国・地域の選択は建物・スポット名の取得範囲だけを決める
 
 ## FAISS 構成
 

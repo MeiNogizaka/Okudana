@@ -134,6 +134,7 @@ OFL-1.1 (SIL Open Font License) は同梱・再配布・改変を明示的に許
 | 都市データ（オフライン逆ジオコーディング） | GeoNames（`reverse_geocoder` パッケージに同梱の `rg_cities1000.csv`） | **CC BY 4.0** | "This work uses data from GeoNames.org, licensed under CC BY 4.0." 等 |
 | POI（建物/スポット名） | OpenStreetMap（Overpass API 経由で `data/poi.db` へ取得・キャッシュ） | **ODbL 1.0**（データベース自体）。個々の地物情報はコミュニティ提供 | "© OpenStreetMap contributors"（<https://www.openstreetmap.org/copyright> 参照） |
 | 日本語形態素辞書 | SudachiDict（`sudachidict-core`） | Apache-2.0 | パッケージ表記の通りで別途の表示義務は無い（Apache-2.0は帰属表示が緩やか。NOTICEファイルがあれば転記が望ましい） |
+| 国名（日本語） | Unicode CLDR（ja の territories）。`okudana/countries.py` に抜粋を同梱。大陸・EU・テスト用コードは除く。XK（コソボ）は OSM が使うので残す | **Unicode License v3** | 表示名のみ。`*-alt-short` があればそれを使う（US はアメリカ）。ファイル先頭に Copyright 行あり |
 
 ### 実務上の対応
 
