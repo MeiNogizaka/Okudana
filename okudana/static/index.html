@@ -1532,7 +1532,10 @@ $("tagInput").addEventListener("input", async e => {
 // --- 書き出しダイアログ ---
 // 切り出しは画像全体を表示したキャンバス上に枠を描画し、ドラッグで移動/拡縮するGUI操作。
 // exp.box は画像に対する正規化座標 (0-1) の {x, y, w, h}。
-const exp = { photo: null, img: null, aspect: null, box: null, drag: null, aspectFlip: false, externalToken: null, regionRecall: false };
+const exp = {
+  photo: null, img: null, aspect: null, box: null, drag: null, aspectFlip: false,
+  externalToken: null, regionRecall: false, suspendPrefs: false, boxEdited: false,
+};
 const CROP_MIN = 0.03;  // 枠の最小サイズ（正規化）
 const CROP_HANDLES = [
   {id:"nw", fx:0,   fy:0,   cursor:"nwse-resize"},
@@ -1575,19 +1578,60 @@ function loadExportPrefs() {
     return { ...EXPORT_DEFAULTS, ...JSON.parse(raw) };
   } catch { return { ...EXPORT_DEFAULTS }; }
 }
+// 保存済みの原寸pxを、今開いている写真の原寸へ載せる。
+// 解像度が一致すれば位置も戻す。端の枠は四捨五入で1pxはみ出すことがあるので、
+// そのときは捨てずに画像の内側へ収める。解像度が違い、大きさ自体は収まるなら中央。
+// 明らかに収まらないときは how:"none"（呼び出し側は全体のままにする）。
+function fitStoredBox(bp, origW, origH) {
+  origW = +origW || 0;
+  origH = +origH || 0;
+  if (!bp || !(+bp.w > 0) || !(+bp.h > 0) || !(origW > 0) || !(origH > 0)) return null;
+  const same = +bp.origW === origW && +bp.origH === origH;
+  if (same) {
+    let w = +bp.w / origW, h = +bp.h / origH;
+    if (!(w > 0) || !(h > 0)) return null;
+    if (w > 1) w = 1;
+    if (h > 1) h = 1;
+    return {
+      box: {
+        x: clamp(+bp.x / origW, 0, 1 - w),
+        y: clamp(+bp.y / origH, 0, 1 - h),
+        w, h,
+      },
+      how: "same",
+    };
+  }
+  let w = +bp.w / origW, h = +bp.h / origH;
+  if (!(w > 0) || !(h > 0)) return null;
+  // 2px以内のはみ出しは丸め誤差として内側へ収める
+  if (w > 1 + 2 / origW || h > 1 + 2 / origH) return { box: null, how: "none" };
+  w = Math.min(w, 1);
+  h = Math.min(h, 1);
+  return { box: { x: (1 - w) / 2, y: (1 - h) / 2, w, h }, how: "center" };
+}
 function saveExportPrefs() {
+  // ダイアログを開いている途中の全体枠で、覚えていた範囲を消さない
+  if (exp.suspendPrefs) return;
   const origW = exp.photo?.width || exp.img?.naturalWidth || 0;
   const origH = exp.photo?.height || exp.img?.naturalHeight || 0;
   const isFull = exp.box && exp.box.w > 0.999 && exp.box.h > 0.999;
   // 写真ごとの枠を呼び出しただけでは、連射用の直前の枠を上書きしない。
   // 透かしや解像度を変えても boxPx は元のまま。枠自体をドラッグしたら上書きする。
-  const kept = exp.regionRecall ? loadExportPrefs().boxPx : null;
-  const boxPx = exp.regionRecall ? kept : (
-    (exp.box && origW && origH && !isFull)
-      ? { x: Math.round(exp.box.x * origW), y: Math.round(exp.box.y * origH),
-          w: Math.round(exp.box.w * origW), h: Math.round(exp.box.h * origH),
-          origW, origH }
-      : null);
+  // 画像サイズがまだ無いときや、ユーザが枠を触っていない全体表示では消さない。
+  let boxPx;
+  if (exp.regionRecall || !(origW > 0) || !(origH > 0)) {
+    boxPx = loadExportPrefs().boxPx;
+  } else if (exp.box && !isFull) {
+    boxPx = {
+      x: Math.round(exp.box.x * origW), y: Math.round(exp.box.y * origH),
+      w: Math.round(exp.box.w * origW), h: Math.round(exp.box.h * origH),
+      origW, origH,
+    };
+  } else if (exp.boxEdited) {
+    boxPx = null;
+  } else {
+    boxPx = loadExportPrefs().boxPx;
+  }
   localStorage.setItem(EXPORT_PREFS_KEY, JSON.stringify({
     wm: $("expWm").value, wmPos: exp.wmPos, wmFont: $("expWmFont").value,
     wmOp: +$("expWmOp").value, wmSize: +$("expWmSize").value,
@@ -1694,6 +1738,8 @@ async function openExport(photo) {
   exp.photo = photo;
   exp.externalToken = photo.externalToken || null;
   exp.regionRecall = false;
+  exp.boxEdited = false;
+  exp.suspendPrefs = true;
   exp.aspect = null;
   exp.aspectFlip = false;
   exp.box = { x: 0, y: 0, w: 1, h: 1 };
@@ -1711,53 +1757,59 @@ async function openExport(photo) {
   $("expResult").textContent = "";
   $("expDimLabel").textContent = "";
 
-  await ensureWmFontOptions();
+  // フォント一覧の待っているあいだに全体枠のまま保存が走ると、連射用の枠が消える。
+  // 先に prefs を読んで枠を戻し、画面の初期化が終わるまで保存しない。
   const prefs = loadExportPrefs();
-  // 前回の書き出し範囲 (原寸px) を、今回開いた写真の原寸と突き合わせて復元する。
-  // 解像度が完全一致 (同じ写真を開き直した等) なら位置も含めてそのまま復元、
-  // 一致しないがサイズ自体は収まるなら中央寄せで復元、収まらなければ全体表示のまま
-  const origW = photo.width || 0, origH = photo.height || 0;
-  const bp = prefs.boxPx;
-  if (bp && origW && origH) {
-    if (bp.origW === origW && bp.origH === origH) {
-      const w = bp.w / origW, h = bp.h / origH, x = bp.x / origW, y = bp.y / origH;
-      if (w > 0 && h > 0 && x >= 0 && y >= 0 && x + w <= 1 && y + h <= 1) {
-        exp.box = { x, y, w, h };
-      }
+  const placed = fitStoredBox(prefs.boxPx, photo.width, photo.height);
+  if (placed?.box) exp.box = placed.box;
+
+  try {
+    await ensureWmFontOptions();
+    $("expWm").value = prefs.wm;
+    exp.wmPos = prefs.wmPos;
+    renderWmPosGrid();
+    $("expWmFont").value = prefs.wmFont;
+    $("expWmOp").value = prefs.wmOp; $("expWmOpVal").textContent = Math.round(prefs.wmOp * 100) + "%";
+    $("expWmSize").value = prefs.wmSize; $("expWmSizeVal").textContent = prefs.wmSize + "%";
+    $("expWmImgSize").value = prefs.wmImgSize; $("expWmImgSizeVal").textContent = prefs.wmImgSize + "%";
+    setWmMode(prefs.wmMode);
+    $("expGps").checked = prefs.gps;
+    $("expFormat").value = prefs.format;
+    $("expEdgePx").value = prefs.edgePx;
+    const knownEdge = ["", "4096", "2048", "1600", "1024", "custom"];
+    if (prefs.edge && !knownEdge.includes(prefs.edge)) {
+      // 旧バージョンで数値だけ記憶していた場合は「指定」へ
+      $("expEdge").value = "custom";
+      $("expEdgePx").value = prefs.edge;
     } else {
-      const w = bp.w / origW, h = bp.h / origH;
-      if (w > 0 && h > 0 && w <= 1 && h <= 1) {
-        exp.box = { x: (1 - w) / 2, y: (1 - h) / 2, w, h };
-      }
+      $("expEdge").value = prefs.edge;
     }
+    $("expQ").value = prefs.quality;
+    $("expTargetMib").value = prefs.targetMib;
+    syncExpEdgePxVisibility();
+    updateExpFormatUI();
+    if (placed?.how === "center") {
+      $("expResult").textContent = "解像度が違うので、前の枠と同じ大きさで中央に置いています";
+    } else if (placed?.how === "none") {
+      $("expResult").textContent = "前の枠はこの画像に収まらないので、全体のままです";
+    }
+    exp.img = new Image();
+    exp.img.onload = () => {
+      // 原寸が DB に無い写真は、プレビューの実寸が分かってから同じルールで戻す
+      if (!exp.boxEdited && !exp.drag && !(exp.photo?.width > 0 && exp.photo?.height > 0)) {
+        const again = fitStoredBox(loadExportPrefs().boxPx, exp.img.naturalWidth, exp.img.naturalHeight);
+        if (again?.box) exp.box = again.box;
+        else if (again?.how === "none" && !$("expResult").textContent) {
+          $("expResult").textContent = "前の枠はこの画像に収まらないので、全体のままです";
+        }
+      }
+      drawExport();
+    };
+    exp.img.src = photo.previewUrl
+      || `/api/photos/${photo.id}/preview?h=${photo.xxhash}`;
+  } finally {
+    exp.suspendPrefs = false;
   }
-  $("expWm").value = prefs.wm;
-  exp.wmPos = prefs.wmPos;
-  renderWmPosGrid();
-  $("expWmFont").value = prefs.wmFont;
-  $("expWmOp").value = prefs.wmOp; $("expWmOpVal").textContent = Math.round(prefs.wmOp * 100) + "%";
-  $("expWmSize").value = prefs.wmSize; $("expWmSizeVal").textContent = prefs.wmSize + "%";
-  $("expWmImgSize").value = prefs.wmImgSize; $("expWmImgSizeVal").textContent = prefs.wmImgSize + "%";
-  setWmMode(prefs.wmMode);
-  $("expGps").checked = prefs.gps;
-  $("expFormat").value = prefs.format;
-  $("expEdgePx").value = prefs.edgePx;
-  const knownEdge = ["", "4096", "2048", "1600", "1024", "custom"];
-  if (prefs.edge && !knownEdge.includes(prefs.edge)) {
-    // 旧バージョンで数値だけ記憶していた場合は「指定」へ
-    $("expEdge").value = "custom";
-    $("expEdgePx").value = prefs.edge;
-  } else {
-    $("expEdge").value = prefs.edge;
-  }
-  $("expQ").value = prefs.quality;
-  $("expTargetMib").value = prefs.targetMib;
-  syncExpEdgePxVisibility();
-  updateExpFormatUI();
-  exp.img = new Image();
-  exp.img.onload = drawExport;
-  exp.img.src = photo.previewUrl
-    || `/api/photos/${photo.id}/preview?h=${photo.xxhash}`;
   $("expDlg").showModal();
   // showModal() 後でないと expCanvasWrap の clientWidth が測れない (非表示中は0)
   resizeExpCanvas();
@@ -2115,8 +2167,10 @@ function expHitTest(px, py) {
 
 function expApplyAspect() {
   if (!exp.aspect) { drawExport(); return; }
+  const iw = exp.img?.naturalWidth || 0, ih = exp.img?.naturalHeight || 0;
+  if (!(iw > 0) || !(ih > 0)) return;
   exp.regionRecall = false;
-  const iw = exp.img.naturalWidth, ih = exp.img.naturalHeight;
+  exp.boxEdited = true;
   const cx = exp.box.x + exp.box.w / 2, cy = exp.box.y + exp.box.h / 2;
   let w = exp.box.w, h = (w * iw / exp.aspect) / ih;
   if (h > 1) { h = 1; w = (h * ih * exp.aspect) / iw; }
@@ -2129,9 +2183,11 @@ function expApplyAspect() {
 // 現在の枠の中心に当てはめる。写真の原寸を超える指定は全体に収まる範囲へ丸める
 function expApplyPixelSize(pxW, pxH) {
   if (!(pxW > 0) || !(pxH > 0)) return;
+  const origW = exp.photo.width || exp.img?.naturalWidth || 0;
+  const origH = exp.photo.height || exp.img?.naturalHeight || 0;
+  if (!(origW > 0) || !(origH > 0)) return;
   exp.regionRecall = false;
-  const origW = exp.photo.width || exp.img.naturalWidth;
-  const origH = exp.photo.height || exp.img.naturalHeight;
+  exp.boxEdited = true;
   const w = clamp(pxW / origW, 0, 1), h = clamp(pxH / origH, 0, 1);
   const cx = exp.box.x + exp.box.w / 2, cy = exp.box.y + exp.box.h / 2;
   exp.box = { x: clamp(cx - w/2, 0, 1-w), y: clamp(cy - h/2, 0, 1-h), w, h };
@@ -2153,13 +2209,14 @@ $("expCanvas").addEventListener("pointerdown", e => {
   const { px, py } = expCanvasXY(e);
   const hit = expHitTest(px, py);
   const n = expPointToNorm(px, py);
+  const box0 = { ...exp.box };
   if (hit && hit.id === "move") {
-    exp.drag = { mode: "move", startX: n.x, startY: n.y, box0: {...exp.box} };
+    exp.drag = { mode: "move", startX: n.x, startY: n.y, box0 };
   } else if (hit) {
-    exp.drag = { mode: "resize", handle: hit, box0: {...exp.box} };
+    exp.drag = { mode: "resize", handle: hit, box0 };
   } else {
     exp.box = { x: n.x, y: n.y, w: 0, h: 0 };
-    exp.drag = { mode: "new", anchor: {x: n.x, y: n.y} };
+    exp.drag = { mode: "new", anchor: {x: n.x, y: n.y}, box0 };
   }
   e.target.setPointerCapture(e.pointerId);
   drawExport();
@@ -2211,23 +2268,29 @@ $("expCanvas").addEventListener("pointermove", e => {
   drawExport();
 });
 
-$("expCanvas").addEventListener("pointerup", () => {
+function finishExportDrag(cancelled) {
   const drag = exp.drag;
-  if (drag?.mode === "new" && (exp.box.w < CROP_MIN || exp.box.h < CROP_MIN)) {
-    exp.box = { x: 0, y: 0, w: 1, h: 1 };  // 極小ドラッグ（誤クリック）は無視
-    drawExport();
-  }
-  if (drag) {
-    // 呼び出した枠の上でクリックしただけでは、連射用の直前の枠を上書きしない。
-    // 実際に枠が動いたときだけ、ブラウザの1枠もこちらへ更新する。
-    const b0 = drag.box0;
-    const changed = !b0 || b0.x !== exp.box.x || b0.y !== exp.box.y
-      || b0.w !== exp.box.w || b0.h !== exp.box.h;
-    if (changed) exp.regionRecall = false;
-    saveExportPrefs();
-  }
+  if (!drag) return;
   exp.drag = null;
-});
+  // 枠の外をクリックしただけのときは、今の枠も連射用の記憶も変えない。
+  // 以前はここで全体枠にして保存していたため、直前の範囲が消えていた。
+  const tiny = drag.mode === "new" && (exp.box.w < CROP_MIN || exp.box.h < CROP_MIN);
+  if (cancelled || tiny) {
+    if (drag.box0) exp.box = { ...drag.box0 };
+    drawExport();
+    return;
+  }
+  const b0 = drag.box0;
+  const changed = !b0 || b0.x !== exp.box.x || b0.y !== exp.box.y
+    || b0.w !== exp.box.w || b0.h !== exp.box.h;
+  if (changed) {
+    exp.regionRecall = false;
+    exp.boxEdited = true;
+  }
+  saveExportPrefs();
+}
+$("expCanvas").addEventListener("pointerup", () => finishExportDrag(false));
+$("expCanvas").addEventListener("pointercancel", () => finishExportDrag(true));
 
 $("expAspects").addEventListener("click", e => {
   if (e.target.closest("#expAspFlip")) return;
@@ -2267,6 +2330,7 @@ $("expPxApplyBtn").addEventListener("click", () => {
 
 $("expBoxResetBtn").addEventListener("click", () => {
   exp.regionRecall = false;
+  exp.boxEdited = true;
   exp.box = { x: 0, y: 0, w: 1, h: 1 };
   exp.aspect = null;
   $("expAspW").value = ""; $("expAspH").value = "";
