@@ -55,6 +55,12 @@ def update_fts(db: sqlite3.Connection, photo_id: int) -> None:
     captions = [r["caption_snippet"] for r in db.execute(
         "SELECT caption_snippet FROM photo_posts WHERE photo_id=? AND caption_snippet IS NOT NULL",
         (photo_id,))]
+    # 切り出しメモは caption 列に混ぜる。FTS の列を増やすと全写真の索引作り直しになる。
+    # メモが付いた写真だけ、この関数を呼び直せば検索に入る。ML_VERSION は上げない。
+    memos = [r["memo"] for r in db.execute(
+        """SELECT memo FROM photo_export_regions
+           WHERE photo_id=? AND memo != '' ORDER BY slot""",
+        (photo_id,))]
 
     db.execute("DELETE FROM photos_fts WHERE rowid=?", (photo_id,))
     db.execute(
@@ -64,7 +70,7 @@ def update_fts(db: sqlite3.Connection, photo_id: int) -> None:
          tokenize_ja(" ".join(tags)),
          tokenize_ja(" ".join(ocr)),
          tokenize_ja(place),
-         tokenize_ja(" ".join(captions))))
+         tokenize_ja(" ".join(captions + memos))))
 
 
 def fts_ranks(db: sqlite3.Connection, q: str, limit: int = 200) -> list[int]:

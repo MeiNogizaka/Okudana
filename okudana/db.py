@@ -179,6 +179,33 @@ def _migrate(db: sqlite3.Connection) -> None:
         # 既存写真の行はスキャン時のパレット差分で埋める（ML 再抽出はしない）。
         db.execute("UPDATE schema_meta SET value='8' WHERE key='schema_version'")
         db.commit()
+        version = 8
+    if version and version < 9:
+        # v8 → v9: photo_export_regions。CREATE TABLE IF NOT EXISTS は schema.sql 側。
+        # 切り出しメモの検索は、保存した写真だけ update_fts する。ML_VERSION は上げない。
+        db.execute("UPDATE schema_meta SET value='9' WHERE key='schema_version'")
+        db.commit()
+        version = 9
+    if version and version < 10:
+        # v9 → v10: 切り出し枠のロック（1写真1件）と、書き出し時の自動記録の設定。
+        # 表がまだ無い v8 は、この後の schema.sql が locked 付きで作る。
+        if _has(db, "photo_export_regions"):
+            cols = [r["name"] for r in db.execute("PRAGMA table_info(photo_export_regions)")]
+            if "locked" not in cols:
+                db.execute(
+                    "ALTER TABLE photo_export_regions ADD COLUMN locked "
+                    "INTEGER NOT NULL DEFAULT 0 CHECK (locked IN (0, 1))"
+                )
+            db.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_export_regions_one_lock "
+                "ON photo_export_regions(photo_id) WHERE locked = 1"
+            )
+        if _has(db, "app_settings"):
+            db.execute(
+                "INSERT OR IGNORE INTO app_settings VALUES ('export_region_auto', '1')"
+            )
+        db.execute("UPDATE schema_meta SET value='10' WHERE key='schema_version'")
+        db.commit()
 
 
 def _has(db: sqlite3.Connection, table: str) -> bool:

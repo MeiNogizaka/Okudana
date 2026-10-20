@@ -473,6 +473,17 @@
     </p>
   </div>
 
+  <p class="lbl" style="margin-top:16px">書き出し</p>
+  <div style="font-size:13px">
+    <label style="display:flex; gap:8px; align-items:center; cursor:pointer">
+      <input id="setExportRegionAuto" type="checkbox" checked>
+      書き出した切り出しを、写真ごとに自動で記録する
+    </label>
+    <p style="font-size:11.5px; color:var(--ink2); margin:6px 0 0 24px">
+      オンのときは、書き出しのたびにその範囲を最新3件として残します。画像全体の書き出しは自動では残しません。1件はロックして残せます。オフのときは「記録」を押したときだけ残ります
+    </p>
+  </div>
+
   <p class="lbl" style="margin-top:16px">カラーパレット</p>
   <div style="font-size:13px; display:grid; gap:6px">
     <label style="display:flex; gap:8px; align-items:center; cursor:pointer">
@@ -666,6 +677,39 @@
         <button id="expPxApplyBtn" class="ghost" style="font-size:11px;padding:3px 8px">適用</button>
         <button id="expBoxResetBtn" class="ghost" style="font-size:11px;padding:3px 8px;margin-left:auto">範囲をリセット</button>
       </div>
+      <div id="expRegions" hidden style="margin-top:10px">
+        <p class="lbl" style="margin-bottom:4px">この写真の切り出し</p>
+        <p id="expRegionHint" style="font-size:10.5px; color:var(--ink2); margin:0 0 6px">
+          開いた直後の枠は、連射用にブラウザが覚えている直前の範囲です。書き出すと、この写真の新しい順に3件まで残ります。ロックした1件は上書きされません。メモは検索に含まれます。
+        </p>
+        <div id="expRegionList" style="display:grid; gap:4px">
+          <div data-slot="1" style="display:grid; grid-template-columns:14px minmax(0,1fr) auto auto auto auto; gap:4px; align-items:center">
+            <span style="font-size:11px; color:var(--ink2)">1</span>
+            <input class="exp-region-memo" maxlength="200" placeholder="メモ（検索できます）" style="width:100%; margin:0; padding:3px 6px; font-size:11.5px">
+            <button type="button" class="ghost exp-region-save" style="font-size:11px;padding:3px 8px">記録</button>
+            <button type="button" class="ghost exp-region-load" style="font-size:11px;padding:3px 8px" disabled>呼出</button>
+            <button type="button" class="ghost exp-region-lock" style="font-size:11px;padding:3px 8px" disabled>ロック</button>
+            <button type="button" class="ghost exp-region-del" style="font-size:11px;padding:3px 8px" disabled>削除</button>
+          </div>
+          <div data-slot="2" style="display:grid; grid-template-columns:14px minmax(0,1fr) auto auto auto auto; gap:4px; align-items:center">
+            <span style="font-size:11px; color:var(--ink2)">2</span>
+            <input class="exp-region-memo" maxlength="200" placeholder="メモ（検索できます）" style="width:100%; margin:0; padding:3px 6px; font-size:11.5px">
+            <button type="button" class="ghost exp-region-save" style="font-size:11px;padding:3px 8px">記録</button>
+            <button type="button" class="ghost exp-region-load" style="font-size:11px;padding:3px 8px" disabled>呼出</button>
+            <button type="button" class="ghost exp-region-lock" style="font-size:11px;padding:3px 8px" disabled>ロック</button>
+            <button type="button" class="ghost exp-region-del" style="font-size:11px;padding:3px 8px" disabled>削除</button>
+          </div>
+          <div data-slot="3" style="display:grid; grid-template-columns:14px minmax(0,1fr) auto auto auto auto; gap:4px; align-items:center">
+            <span style="font-size:11px; color:var(--ink2)">3</span>
+            <input class="exp-region-memo" maxlength="200" placeholder="メモ（検索できます）" style="width:100%; margin:0; padding:3px 6px; font-size:11.5px">
+            <button type="button" class="ghost exp-region-save" style="font-size:11px;padding:3px 8px">記録</button>
+            <button type="button" class="ghost exp-region-load" style="font-size:11px;padding:3px 8px" disabled>呼出</button>
+            <button type="button" class="ghost exp-region-lock" style="font-size:11px;padding:3px 8px" disabled>ロック</button>
+            <button type="button" class="ghost exp-region-del" style="font-size:11px;padding:3px 8px" disabled>削除</button>
+          </div>
+        </div>
+        <p id="expRegionStatus" style="font-size:11px; color:var(--ink2); margin:4px 0 0"></p>
+      </div>
     </div>
     <div style="width:248px; font-size:12px">
       <p class="lbl" style="margin-top:0">透かし</p>
@@ -799,13 +843,27 @@ async function api(path, opts) {
 
 let paletteLayout = "horizontal"; // horizontal | vertical | hidden
 let paletteNote = true;
+let exportRegionAuto = true;
 function applyPaletteSettings(s) {
   if (s.palette_layout === "vertical" || s.palette_layout === "hidden" || s.palette_layout === "horizontal")
     paletteLayout = s.palette_layout;
   paletteNote = !!s.palette_note;
 }
+function exportRegionHintText() {
+  return exportRegionAuto
+    ? "開いた直後の枠は、連射用にブラウザが覚えている直前の範囲です。書き出すと、この写真の新しい順に3件まで残ります。ロックした1件は上書きされません。メモは検索に含まれます。"
+    : "開いた直後の枠は、連射用にブラウザが覚えている直前の範囲です。自動記録はオフです。残すときは記録を押します。ロックした1件は上書きされません。メモは検索に含まれます。";
+}
+function applyExportRegionAuto(s) {
+  exportRegionAuto = s.export_region_auto !== false;
+  const box = $("setExportRegionAuto");
+  if (box) box.checked = exportRegionAuto;
+  const hint = $("expRegionHint");
+  if (hint) hint.textContent = exportRegionHintText();
+}
 api("/settings").then(s => {
   applyPaletteSettings(s);
+  applyExportRegionAuto(s);
   refreshOpenPalette();
 }).catch(() => {});
 api("/index/status").then(s => {
@@ -1474,7 +1532,7 @@ $("tagInput").addEventListener("input", async e => {
 // --- 書き出しダイアログ ---
 // 切り出しは画像全体を表示したキャンバス上に枠を描画し、ドラッグで移動/拡縮するGUI操作。
 // exp.box は画像に対する正規化座標 (0-1) の {x, y, w, h}。
-const exp = { photo: null, img: null, aspect: null, box: null, drag: null, aspectFlip: false, externalToken: null };
+const exp = { photo: null, img: null, aspect: null, box: null, drag: null, aspectFlip: false, externalToken: null, regionRecall: false };
 const CROP_MIN = 0.03;  // 枠の最小サイズ（正規化）
 const CROP_HANDLES = [
   {id:"nw", fx:0,   fy:0,   cursor:"nwse-resize"},
@@ -1489,6 +1547,10 @@ const CROP_HANDLES = [
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 // --- 書き出し設定の記憶 ---
+// ブラウザには切り出し枠を1つだけ覚える（連射用）。写真を開いた直後はこの枠を出す。
+// 写真ごとの3枠は別で、サーバの photo_export_regions。呼出を押したときだけ出す。
+// 書き出しに成功すると、設定がオンのときだけサーバが最新3件へ足す。
+// 記録や呼出やロックでは、この localStorage を書き換えない。
 // crop枠 (exp.box) は正規化座標 (0-1) のため、写真ごとに解像度が違っても数値上は
 // 常に0-1に収まってしまい「範囲外」判定ができない。そのため原寸pxでの位置・幅高さ
 // (boxPx、保存時の写真の原寸origW/origHも一緒に) を記憶し、次回開いたときにその
@@ -1517,6 +1579,15 @@ function saveExportPrefs() {
   const origW = exp.photo?.width || exp.img?.naturalWidth || 0;
   const origH = exp.photo?.height || exp.img?.naturalHeight || 0;
   const isFull = exp.box && exp.box.w > 0.999 && exp.box.h > 0.999;
+  // 写真ごとの枠を呼び出しただけでは、連射用の直前の枠を上書きしない。
+  // 透かしや解像度を変えても boxPx は元のまま。枠自体をドラッグしたら上書きする。
+  const kept = exp.regionRecall ? loadExportPrefs().boxPx : null;
+  const boxPx = exp.regionRecall ? kept : (
+    (exp.box && origW && origH && !isFull)
+      ? { x: Math.round(exp.box.x * origW), y: Math.round(exp.box.y * origH),
+          w: Math.round(exp.box.w * origW), h: Math.round(exp.box.h * origH),
+          origW, origH }
+      : null);
   localStorage.setItem(EXPORT_PREFS_KEY, JSON.stringify({
     wm: $("expWm").value, wmPos: exp.wmPos, wmFont: $("expWmFont").value,
     wmOp: +$("expWmOp").value, wmSize: +$("expWmSize").value,
@@ -1526,11 +1597,7 @@ function saveExportPrefs() {
     gps: $("expGps").checked,
     format: $("expFormat").value, edge: $("expEdge").value, edgePx: $("expEdgePx").value,
     quality: +$("expQ").value, targetMib: $("expTargetMib").value,
-    boxPx: (exp.box && origW && origH && !isFull)
-      ? { x: Math.round(exp.box.x * origW), y: Math.round(exp.box.y * origH),
-          w: Math.round(exp.box.w * origW), h: Math.round(exp.box.h * origH),
-          origW, origH }
-      : null,
+    boxPx,
   }));
 }
 
@@ -1626,6 +1693,7 @@ async function openExport(photo) {
   }
   exp.photo = photo;
   exp.externalToken = photo.externalToken || null;
+  exp.regionRecall = false;
   exp.aspect = null;
   exp.aspectFlip = false;
   exp.box = { x: 0, y: 0, w: 1, h: 1 };
@@ -1694,7 +1762,207 @@ async function openExport(photo) {
   // showModal() 後でないと expCanvasWrap の clientWidth が測れない (非表示中は0)
   resizeExpCanvas();
   drawExport();
+  loadExportRegions();
 }
+
+let expRegionToken = 0;
+const expSavedRegions = new Map();
+
+function expRegionRow(slot) {
+  return document.querySelector(`#expRegionList [data-slot="${slot}"]`);
+}
+
+function showExportRegion(slot, rec) {
+  const row = expRegionRow(slot);
+  if (!row) return;
+  if (rec) expSavedRegions.set(slot, rec);
+  else expSavedRegions.delete(slot);
+  const memo = row.querySelector(".exp-region-memo");
+  if (document.activeElement !== memo) memo.value = rec ? rec.memo : "";
+  const locked = !!(rec && rec.locked);
+  row.querySelector(".exp-region-load").disabled = !rec;
+  row.querySelector(".exp-region-save").disabled = locked;
+  row.querySelector(".exp-region-del").disabled = !rec || locked;
+  const lock = row.querySelector(".exp-region-lock");
+  lock.disabled = !rec;
+  lock.textContent = locked ? "ロック中" : "ロック";
+  lock.classList.toggle("ghost", !locked);
+  lock.title = locked ? "ロックを外す" : "この1件を残し、自動記録で上書きしない";
+  const load = row.querySelector(".exp-region-load");
+  load.title = rec
+    ? `${Math.round(rec.w * rec.src_w)}×${Math.round(rec.h * rec.src_h)}`
+    : "";
+}
+
+function orderExportRegionRows() {
+  const list = $("expRegionList");
+  const rows = [...list.querySelectorAll("[data-slot]")];
+  rows.sort((a, b) => {
+    const ra = expSavedRegions.get(+a.dataset.slot);
+    const rb = expSavedRegions.get(+b.dataset.slot);
+    if (!ra && !rb) return +a.dataset.slot - +b.dataset.slot;
+    if (!ra) return 1;
+    if (!rb) return -1;
+    if (!!ra.locked !== !!rb.locked) return ra.locked ? -1 : 1;
+    const ta = ra.updated_at || "", tb = rb.updated_at || "";
+    if (ta !== tb) return ta < tb ? 1 : -1;
+    return +a.dataset.slot - +b.dataset.slot;
+  });
+  for (const row of rows) list.appendChild(row);
+}
+
+function clearExportRegions() {
+  expSavedRegions.clear();
+  for (const slot of [1, 2, 3]) showExportRegion(slot, null);
+  $("expRegionStatus").textContent = "";
+}
+
+async function loadExportRegions() {
+  const token = ++expRegionToken;
+  const box = $("expRegions");
+  clearExportRegions();
+  if (!exp.photo?.id || exp.externalToken) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  try {
+    const rows = await api(`/photos/${exp.photo.id}/export-regions`);
+    if (token !== expRegionToken) return;
+    for (const rec of rows) showExportRegion(rec.slot, rec);
+    orderExportRegionRows();
+  } catch (err) {
+    if (token !== expRegionToken) return;
+    $("expRegionStatus").textContent = "記録の読み込みに失敗しました: " + err.message;
+  }
+}
+
+function recallExportRegion(rec) {
+  const origW = exp.photo?.width || exp.img?.naturalWidth || 0;
+  const origH = exp.photo?.height || exp.img?.naturalHeight || 0;
+  if (!(origW > 0) || !(origH > 0)) {
+    $("expRegionStatus").textContent = "画像サイズがまだ分かりません";
+    return;
+  }
+  if (rec.src_w === origW && rec.src_h === origH) {
+    exp.box = { x: rec.x, y: rec.y, w: rec.w, h: rec.h };
+    $("expRegionStatus").textContent = "呼び出しました。解像度と透かしはこの画面のままです";
+  } else {
+    const w = (rec.w * rec.src_w) / origW;
+    const h = (rec.h * rec.src_h) / origH;
+    if (!(w > 0 && h > 0 && w <= 1 && h <= 1)) {
+      $("expRegionStatus").textContent = "この範囲は今の画像に収まりません";
+      return;
+    }
+    exp.box = { x: (1 - w) / 2, y: (1 - h) / 2, w, h };
+    $("expRegionStatus").textContent = "解像度が違うので、同じ大きさで中央に置きました";
+  }
+  exp.regionRecall = true;
+  drawExport();
+}
+
+$("expRegionList").addEventListener("click", async (e) => {
+  const row = e.target.closest("[data-slot]");
+  if (!row || !exp.photo?.id || exp.externalToken) return;
+  const slot = +row.dataset.slot;
+  const status = $("expRegionStatus");
+  if (e.target.closest(".exp-region-load")) {
+    const rec = expSavedRegions.get(slot);
+    if (rec) recallExportRegion(rec);
+    return;
+  }
+  if (e.target.closest(".exp-region-save")) {
+    if (expSavedRegions.get(slot)?.locked) {
+      status.textContent = "ロック中です。外してから記録や削除ができます";
+      return;
+    }
+    const origW = exp.photo.width || exp.img?.naturalWidth || 0;
+    const origH = exp.photo.height || exp.img?.naturalHeight || 0;
+    if (!(origW > 0) || !(origH > 0) || !(exp.box?.w > 0.01) || !(exp.box?.h > 0.01)) {
+      status.textContent = "範囲を記録できません";
+      return;
+    }
+    const memo = row.querySelector(".exp-region-memo").value;
+    try {
+      const saved = await api(`/photos/${exp.photo.id}/export-regions/${slot}`, {
+        method: "PUT",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          x: exp.box.x, y: exp.box.y, w: exp.box.w, h: exp.box.h,
+          src_w: origW, src_h: origH, memo,
+        }),
+      });
+      showExportRegion(slot, saved);
+      row.querySelector(".exp-region-memo").value = saved.memo;
+      orderExportRegionRows();
+      status.textContent = `枠${slot}に記録しました`;
+    } catch (err) {
+      status.textContent = "エラー: " + err.message;
+    }
+    return;
+  }
+  if (e.target.closest(".exp-region-lock")) {
+    const rec = expSavedRegions.get(slot);
+    if (!rec) return;
+    const hadOther = [...expSavedRegions.entries()].some(([other, r]) => other !== slot && r.locked);
+    try {
+      const saved = await api(`/photos/${exp.photo.id}/export-regions/${slot}`, {
+        method: "PATCH",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({locked: !rec.locked}),
+      });
+      if (saved.locked) {
+        for (const [other, prev] of expSavedRegions) {
+          if (other !== slot && prev.locked) showExportRegion(other, {...prev, locked: 0});
+        }
+      }
+      showExportRegion(slot, saved);
+      orderExportRegionRows();
+      status.textContent = saved.locked
+        ? (hadOther ? "この1件をロックしました。前のロックは外れています" : "この1件をロックしました。自動記録では上書きしません")
+        : "ロックを外しました";
+    } catch (err) {
+      status.textContent = "エラー: " + err.message;
+    }
+    return;
+  }
+  if (e.target.closest(".exp-region-del")) {
+    if (expSavedRegions.get(slot)?.locked) {
+      status.textContent = "ロック中です。外してから記録や削除ができます";
+      return;
+    }
+    try {
+      await api(`/photos/${exp.photo.id}/export-regions/${slot}`, {method: "DELETE"});
+      showExportRegion(slot, null);
+      orderExportRegionRows();
+      status.textContent = `枠${slot}を削除しました`;
+    } catch (err) {
+      status.textContent = "エラー: " + err.message;
+    }
+  }
+});
+
+$("expRegionList").addEventListener("focusout", async (e) => {
+  const memo = e.target.closest?.(".exp-region-memo");
+  if (!memo || !exp.photo?.id || exp.externalToken) return;
+  const photoId = exp.photo.id;
+  const row = memo.closest("[data-slot]");
+  const slot = +row.dataset.slot;
+  const rec = expSavedRegions.get(slot);
+  if (!rec || memo.value === rec.memo) return;
+  try {
+    const saved = await api(`/photos/${photoId}/export-regions/${slot}`, {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({memo: memo.value}),
+    });
+    if (exp.photo?.id !== photoId) return;
+    showExportRegion(slot, saved);
+    if (document.activeElement !== memo) memo.value = saved.memo;
+  } catch (err) {
+    $("expRegionStatus").textContent = "エラー: " + err.message;
+  }
+});
 
 function setWmMode(mode) {
   exp.wmMode = mode === "image" || mode === "none" ? mode : "text";
@@ -1847,6 +2115,7 @@ function expHitTest(px, py) {
 
 function expApplyAspect() {
   if (!exp.aspect) { drawExport(); return; }
+  exp.regionRecall = false;
   const iw = exp.img.naturalWidth, ih = exp.img.naturalHeight;
   const cx = exp.box.x + exp.box.w / 2, cy = exp.box.y + exp.box.h / 2;
   let w = exp.box.w, h = (w * iw / exp.aspect) / ih;
@@ -1860,6 +2129,7 @@ function expApplyAspect() {
 // 現在の枠の中心に当てはめる。写真の原寸を超える指定は全体に収まる範囲へ丸める
 function expApplyPixelSize(pxW, pxH) {
   if (!(pxW > 0) || !(pxH > 0)) return;
+  exp.regionRecall = false;
   const origW = exp.photo.width || exp.img.naturalWidth;
   const origH = exp.photo.height || exp.img.naturalHeight;
   const w = clamp(pxW / origW, 0, 1), h = clamp(pxH / origH, 0, 1);
@@ -1942,11 +2212,20 @@ $("expCanvas").addEventListener("pointermove", e => {
 });
 
 $("expCanvas").addEventListener("pointerup", () => {
-  if (exp.drag?.mode === "new" && (exp.box.w < CROP_MIN || exp.box.h < CROP_MIN)) {
+  const drag = exp.drag;
+  if (drag?.mode === "new" && (exp.box.w < CROP_MIN || exp.box.h < CROP_MIN)) {
     exp.box = { x: 0, y: 0, w: 1, h: 1 };  // 極小ドラッグ（誤クリック）は無視
     drawExport();
   }
-  if (exp.drag) saveExportPrefs();  // ドラッグで範囲を変えたときだけ記憶する
+  if (drag) {
+    // 呼び出した枠の上でクリックしただけでは、連射用の直前の枠を上書きしない。
+    // 実際に枠が動いたときだけ、ブラウザの1枠もこちらへ更新する。
+    const b0 = drag.box0;
+    const changed = !b0 || b0.x !== exp.box.x || b0.y !== exp.box.y
+      || b0.w !== exp.box.w || b0.h !== exp.box.h;
+    if (changed) exp.regionRecall = false;
+    saveExportPrefs();
+  }
   exp.drag = null;
 });
 
@@ -1987,6 +2266,7 @@ $("expPxApplyBtn").addEventListener("click", () => {
 });
 
 $("expBoxResetBtn").addEventListener("click", () => {
+  exp.regionRecall = false;
   exp.box = { x: 0, y: 0, w: 1, h: 1 };
   exp.aspect = null;
   $("expAspW").value = ""; $("expAspH").value = "";
@@ -2111,6 +2391,18 @@ $("expGo").onclick = async () => {
     a.click();
     URL.revokeObjectURL(url);
     $("expResult").textContent = "ダウンロードしました";
+    const recorded = res.headers.get("X-Okudana-Export-Region");
+    if (!exp.externalToken && (recorded === "insert" || recorded === "replace" || recorded === "touch" || recorded === "skip")) {
+      await loadExportRegions();
+      const status = $("expRegionStatus");
+      if (!status.textContent) {
+        status.textContent = recorded === "touch"
+          ? "同じ範囲なので、その記録を新しい順に上げました"
+          : recorded === "skip"
+            ? "ロックしてある同じ範囲なので、新しい記録は足していません"
+            : "この書き出しを記録しました";
+      }
+    }
   } catch (err) {
     $("expResult").textContent = "エラー: " + err.message;
   }
@@ -2260,6 +2552,7 @@ async function refreshVecStatus() {
 $("settingsBtn").onclick = async () => {
   const s = await api("/settings");
   $("setScanStartup").checked = !!s.scan_on_startup;
+  applyExportRegionAuto(s);
   applyPaletteSettings(s);
   document.querySelectorAll('input[name="paletteLayout"]').forEach(el => {
     el.checked = el.value === paletteLayout;
@@ -2722,6 +3015,18 @@ $("setScanStartup").addEventListener("change", e => {
   api("/settings", {
     method: "PATCH", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({scan_on_startup: e.target.checked}),
+  });
+});
+$("setExportRegionAuto").addEventListener("change", e => {
+  exportRegionAuto = e.target.checked;
+  applyExportRegionAuto({export_region_auto: exportRegionAuto});
+  api("/settings", {
+    method: "PATCH", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({export_region_auto: e.target.checked}),
+  }).catch(err => {
+    exportRegionAuto = !e.target.checked;
+    applyExportRegionAuto({export_region_auto: exportRegionAuto});
+    alert("設定を保存できませんでした: " + err.message);
   });
 });
 function syncPaletteNoteControl() {

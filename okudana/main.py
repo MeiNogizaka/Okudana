@@ -29,7 +29,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
 from . import backup as backup_mod
-from . import fts, ml, scanner
+from . import export_regions, fts, ml, scanner
 from . import __version__
 from .db import open_db
 from .palette import colors_from_json
@@ -569,8 +569,157 @@ def export(photo_id: int, body: dict = Body(default={})):
         raise HTTPException(500, f"export failed: {ex}")
     with _db_write:
         db.execute("UPDATE photos SET exported_at=datetime('now') WHERE id=?", (photo_id,))
+        # 自動記録に失敗しても書き出し自体は返す。範囲の保存だけ見送る。
+        try:
+            region_action = _auto_record_on_export(p, opts.get("crop"))
+        except Exception:
+            log.exception("export region auto-record failed")
+            db.rollback()
+            db.execute("UPDATE photos SET exported_at=datetime('now') WHERE id=?", (photo_id,))
+            region_action = "error"
         db.commit()
-    return _export_response(data, filename, opts["fmt"])
+    resp = _export_response(data, filename, opts["fmt"])
+    resp.headers["X-Okudana-Export-Region"] = region_action
+    return resp
+
+
+def _auto_record_on_export(photo, crop) -> str:
+    """設定がオンのとき、全体以外の切り出しを最新3件として残す。commit はしない。"""
+    if get_setting("export_region_auto", "1") != "1":
+        return "off"
+    src_w, src_h = photo["width"], photo["height"]
+    if not src_w or not src_h:
+        return "nosize"
+    if not isinstance(crop, dict):
+        return "full"
+    try:
+        region = _parse_export_region({
+            "x": crop.get("x", 0), "y": crop.get("y", 0),
+            "w": crop.get("w", 0), "h": crop.get("h", 0),
+            "src_w": src_w, "src_h": src_h, "memo": "",
+        })
+    except HTTPException:
+        return "skip"
+    if region["w"] > 0.999 and region["h"] > 0.999:
+        return "full"
+    return export_regions.apply_auto_record(db, photo["id"], region)
+
+
+def _parse_export_region(body: dict) -> dict:
+    """写真ごとの切り出し1枠。割合は作業画像に対する 0-1。"""
+    try:
+        x = float(body["x"]); y = float(body["y"])
+        w = float(body["w"]); h = float(body["h"])
+        src_w = int(body["src_w"]); src_h = int(body["src_h"])
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(422, "x, y, w, h, src_w, src_h are required")
+    if not (0 < src_w <= 100_000 and 0 < src_h <= 100_000):
+        raise HTTPException(422, "invalid source size")
+    eps = 1e-3
+    if not (w > 0 and h > 0 and x >= -eps and y >= -eps
+            and x + w <= 1 + eps and y + h <= 1 + eps):
+        raise HTTPException(422, "crop is out of range")
+    x, y = max(0.0, x), max(0.0, y)
+    w, h = min(w, 1 - x), min(h, 1 - y)
+    if w <= 0 or h <= 0:
+        raise HTTPException(422, "crop is out of range")
+    return {
+        "x": x, "y": y, "w": w, "h": h, "src_w": src_w, "src_h": src_h,
+        "memo": _clean_region_memo(body.get("memo")),
+    }
+
+
+def _clean_region_memo(value) -> str:
+    memo = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(memo) > 200:
+        raise HTTPException(422, "memo is too long")
+    return memo
+
+
+def _region_slot_or_422(slot: int) -> int:
+    if slot not in (1, 2, 3):
+        raise HTTPException(422, "slot must be 1, 2, or 3")
+    return slot
+
+
+@app.get("/api/photos/{photo_id}/export-regions")
+def list_export_regions(photo_id: int):
+    """この写真に記録した切り出し（最大3）。ブラウザの直前の枠とは別。"""
+    _photo_or_404(photo_id)
+    rows = db.execute(
+        f"""SELECT {export_regions.REGION_COLUMNS}
+            FROM photo_export_regions WHERE photo_id=? ORDER BY slot""",
+        (photo_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.put("/api/photos/{photo_id}/export-regions/{slot}")
+def save_export_region(photo_id: int, slot: int, body: dict = Body(...)):
+    """今の範囲とメモをその枠へ保存し、メモを検索索引へ入れる。"""
+    _photo_or_404(photo_id)
+    _region_slot_or_422(slot)
+    region = _parse_export_region(body)
+    with _db_write:
+        if export_regions.region_is_locked(db, photo_id, slot):
+            raise HTTPException(409, "ロック中です。外してから記録や削除ができます")
+        db.execute(
+            """INSERT INTO photo_export_regions
+                 (photo_id, slot, x, y, w, h, src_w, src_h, memo, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?, datetime('now'))
+               ON CONFLICT(photo_id, slot) DO UPDATE SET
+                 x=excluded.x, y=excluded.y, w=excluded.w, h=excluded.h,
+                 src_w=excluded.src_w, src_h=excluded.src_h,
+                 memo=excluded.memo, updated_at=datetime('now')""",
+            (photo_id, slot, region["x"], region["y"], region["w"], region["h"],
+             region["src_w"], region["src_h"], region["memo"]),
+        )
+        fts.update_fts(db, photo_id)
+        db.commit()
+        row = db.execute(
+            f"""SELECT {export_regions.REGION_COLUMNS}
+                FROM photo_export_regions WHERE photo_id=? AND slot=?""",
+            (photo_id, slot),
+        ).fetchone()
+    return dict(row)
+
+
+@app.patch("/api/photos/{photo_id}/export-regions/{slot}")
+def patch_export_region(photo_id: int, slot: int, body: dict = Body(...)):
+    """ロックの付け外し、またはメモだけの更新。枠の位置は変えない。"""
+    _photo_or_404(photo_id)
+    _region_slot_or_422(slot)
+    if "locked" not in body and "memo" not in body:
+        raise HTTPException(422, "locked or memo is required")
+    memo = _clean_region_memo(body["memo"]) if "memo" in body else None
+    locked = bool(body["locked"]) if "locked" in body else None
+    with _db_write:
+        row = None
+        if memo is not None:
+            row = export_regions.update_region_memo(db, photo_id, slot, memo)
+        if locked is not None:
+            row = export_regions.set_region_lock(db, photo_id, slot, locked)
+        if row is None:
+            raise HTTPException(404, "region not found")
+        db.commit()
+    return dict(row)
+
+
+@app.delete("/api/photos/{photo_id}/export-regions/{slot}")
+def delete_export_region(photo_id: int, slot: int):
+    """その枠を消し、メモを検索索引から外す。ロック中は消さない。"""
+    _photo_or_404(photo_id)
+    _region_slot_or_422(slot)
+    with _db_write:
+        if export_regions.region_is_locked(db, photo_id, slot):
+            raise HTTPException(409, "ロック中です。外してから記録や削除ができます")
+        db.execute(
+            "DELETE FROM photo_export_regions WHERE photo_id=? AND slot=?",
+            (photo_id, slot),
+        )
+        fts.update_fts(db, photo_id)
+        db.commit()
+    return {"ok": True}
 
 
 _EXT_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
@@ -1069,7 +1218,7 @@ def delete_root(root_id: int):
 # ================================================================ settings ==
 
 # 真偽値として扱う設定キーの一覧 (PATCH で受け付けるキーもここで制限)
-BOOL_SETTINGS = {"scan_on_startup", "palette_note"}
+BOOL_SETTINGS = {"scan_on_startup", "palette_note", "export_region_auto"}
 # 列挙値。palette_layout はレビュー画面のカラーパレット配置
 ENUM_SETTINGS = {"palette_layout": {"horizontal", "vertical", "hidden"}}
 

@@ -2,11 +2,12 @@
 -- M1 では embedding/FTS/検出系テーブルも作成しておく（M2 以降で使用）
 
 CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT);
-INSERT OR IGNORE INTO schema_meta VALUES ('schema_version', '8');
+INSERT OR IGNORE INTO schema_meta VALUES ('schema_version', '10');
 
 -- アプリ設定 (key-value)。既定値はここで播種し、変更は PATCH /api/settings
 CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 INSERT OR IGNORE INTO app_settings VALUES ('scan_on_startup', '1');
+INSERT OR IGNORE INTO app_settings VALUES ('export_region_auto', '1');
 
 CREATE TABLE IF NOT EXISTS roots (
     id                INTEGER PRIMARY KEY,
@@ -134,6 +135,22 @@ CREATE TABLE IF NOT EXISTS photo_posts (
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_photo_posts_photo ON photo_posts(photo_id);
+
+-- 写真ごとの書き出し切り出し。最大3枠。メモは全文検索に載せる。
+-- ブラウザの直前の枠（localStorage の1つ。連射用）とは別で、開いただけでは適用しない。
+-- locked=1 は1写真につき1枠まで。自動記録はその枠を上書きしない。
+CREATE TABLE IF NOT EXISTS photo_export_regions (
+    photo_id  INTEGER NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+    slot      INTEGER NOT NULL CHECK (slot BETWEEN 1 AND 3),
+    x REAL NOT NULL, y REAL NOT NULL, w REAL NOT NULL, h REAL NOT NULL,  -- 0-1。作業画像に対する割合
+    src_w INTEGER NOT NULL, src_h INTEGER NOT NULL,  -- 記録したときの作業画像の幅高さ
+    memo TEXT NOT NULL DEFAULT '',
+    locked INTEGER NOT NULL DEFAULT 0 CHECK (locked IN (0, 1)),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (photo_id, slot)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_export_regions_one_lock
+    ON photo_export_regions(photo_id) WHERE locked = 1;
 
 -- カラーパレット。1写真1行。心理効果の文章は入れない（表示時に hex から組む）。
 -- version は palette.PALETTE_VERSION。ML の ml_version とは別。

@@ -20,6 +20,7 @@ erDiagram
     DETECTIONS ||--o| BIRD_IDS : refined_by
     PHOTOS ||--o{ PHOTO_POSTS : linked_to
     PHOTOS ||--o| PHOTO_PALETTE : has
+    PHOTOS ||--o{ PHOTO_EXPORT_REGIONS : cropped_as
 
     ROOTS {
         int id PK
@@ -115,7 +116,7 @@ erDiagram
         text tags_text "分かち書き済み"
         text ocr_text
         text place_text
-        text caption "photo_posts.caption_snippet の集約"
+        text caption "投稿キャプションと切り出しメモの集約"
     }
     PHOTO_POSTS {
         int id PK
@@ -134,6 +135,19 @@ erDiagram
         int version "palette.PALETTE_VERSION。ml_versionとは別"
         text colors_json "最大5色。hexと画素数比のみ。印象文は保存しない"
         text updated_at
+    }
+    PHOTO_EXPORT_REGIONS {
+        int photo_id PK_FK
+        int slot PK "1から3。ブラウザの連射用の枠とは別"
+        real x "作業画像に対する0-1"
+        real y
+        real w
+        real h
+        int src_w "記録したときの作業画像の幅"
+        int src_h
+        text memo "全文検索の caption に入る。空は対象外"
+        int locked "1写真につき1枠。自動記録では上書きしない"
+        text updated_at "自動記録が古い枠を選ぶ時刻。メモ更新では動かない"
     }
 ```
 
@@ -154,6 +168,8 @@ erDiagram
 | v6 | photo_posts.platform/platform_label 追加（X以外のSNS投稿リンクにも対応）。photos.exported_at 追加（書き出し済みマーク表示用） |
 | v7 | app_settings から backup_auto を削除（週次自動スナップショットをフルバックアップ/復元に置き換え、参照されなくなったため） |
 | v8 | photo_palette 追加（カラーパレット。最大5色の hex と割合。印象文は保存しない。手順は [palette.md](palette.md)） |
+| v9 | photo_export_regions 追加（写真ごとの切り出し枠。最大3。メモ付き。ブラウザの直前の枠とは別。メモは保存時にその写真の全文索引へ入れる。ML の再抽出はしない） |
+| v10 | photo_export_regions.locked 追加（1写真につき1枠。自動記録で上書きしない）。app_settings.export_region_auto（既定オン。書き出し成功時に最新3件へ残す。画像全体は対象外） |
 
 ER 図との差分に気づいたら schema.sql を正としてください。
 

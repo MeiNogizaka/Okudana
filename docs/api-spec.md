@@ -17,7 +17,11 @@
 | GET | `/photos/{id}/preview` | 1600px プレビュー WebP。thumb と同様、クライアント側で `?h={xxhash}` を付与する（サーバ未検証） |
 | GET | `/photos/{id}/file` | 原本ファイル |
 | POST | `/photos/{id}/open-in-explorer` | OS のファイルマネージャで場所を開く (Dockerコンテナ実行時は501) |
-| POST | `/photos/{id}/export` | 切り出し + 透かし + メタデータ除去で書き出し。成功時 `photos.exported_at` を更新（書き出しファイル自体は永続化しない。「いつ書き出したか」のメタ情報のみ記録し、`/search` の `exported` バッジ表示に使う） |
+| POST | `/photos/{id}/export` | 切り出し + 透かし + メタデータ除去で書き出し。成功時 `photos.exported_at` を更新（書き出しファイル自体は永続化しない。「いつ書き出したか」のメタ情報のみ記録し、`/search` の `exported` バッジ表示に使う）。`export_region_auto` がオン（既定）で、切り出しが画像全体でないときは、その範囲を写真の最新3件へ残す。応答ヘッダ `X-Okudana-Export-Region` は `insert` / `replace` / `touch` / `skip` / `full` / `off` / `nosize` / `error` |
+| GET | `/photos/{id}/export-regions` | その写真の切り出し記録（最大3枠）。`slot`・正規化 `x,y,w,h`・記録時の `src_w,src_h`・`memo`・`locked`（0/1）。開いた直後の枠（ブラウザが1つ覚える連射用）とは別 |
+| PUT | `/photos/{id}/export-regions/{slot}` | 今の範囲とメモをその枠へ保存。`slot` は 1–3。`{x,y,w,h,src_w,src_h,memo}`。メモは200字まで。保存した写真の全文索引を更新する（再スキャンはしない）。ロック中は 409 |
+| PATCH | `/photos/{id}/export-regions/{slot}` | `{locked: true\|false}` でロックを付け外し（1写真1件。付けると他の枠のロックは外れる）。`{memo}` はその枠のメモだけを変える（枠の時刻は動かさない）。枠が無いときは 404 |
+| DELETE | `/photos/{id}/export-regions/{slot}` | その枠を削除し、メモを全文索引から外す。ロック中は 409 |
 | POST | `/export/external` | ライブラリ外の画像を一時受け取り（multipart の `file`）。索引にも `data/` にも残さない。応答は `{token, width, height, name}` |
 | GET | `/export/external/{token}/preview` | 上の一時画像のプレビュー WebP（EXIF 向き補正・RAW は埋め込みプレビュー後） |
 | POST | `/export/external/{token}` | 一時画像を `/photos/{id}/export` と同じ手順で書き出す。`exported_at` は更新しない |
@@ -37,7 +41,7 @@
 | POST | `/index/cancel` | 実行中スキャンに停止を要求（未処理分は次回スキャンで自動再開） |
 | GET | `/index/status` | 進捗スナップショット（`total`・`eta_seconds`・`rate_per_min`・`cancel_requested`・`cancelled` 等。UI は 2 秒ポーリング） |
 | POST | `/index/rebuild-vectors` | ベクトル索引を再構築（重複・削除済みベクトルを除去） |
-| GET | `/settings` / PATCH `/settings` | アプリ設定。真偽値は `scan_on_startup` と `palette_note`（未設定は `true`）。`palette_layout` は `horizontal`（既定）/ `vertical` / `hidden`。旧 `show_palette=0` だけが残っている場合は `hidden` として読む |
+| GET | `/settings` / PATCH `/settings` | アプリ設定。真偽値は `scan_on_startup`、`palette_note`、`export_region_auto`（未設定は `true`。書き出した切り出しを最新3件として残す）。`palette_layout` は `horizontal`（既定）/ `vertical` / `hidden`。旧 `show_palette=0` だけが残っている場合は `hidden` として読む |
 | POST | `/shutdown` | アプリを終了する（設定画面の「終了」ボタンから呼ばれる。応答を返してから `os._exit()`。Dockerでは`docker stop`と実質等価だが、UIからの明示終了手段として維持） |
 | GET | `/geo/poi-status` | OSM POI の取得状況。`prefs[]` は `pref`（保存キー）・`label`（表示名、日本は null）・件数・取得日。`pref="manual"` はカスタム地点 |
 | POST | `/geo/refresh-poi` | POI 更新後、GPS 持ち全写真へ場所名を再適用（画像再解析なし） |
@@ -69,7 +73,7 @@
 
 | Query | 型 | 説明 |
 |---|---|---|
-| `q` | string | 自然言語クエリ（省略時はフィルタのみで全件ブラウズ） |
+| `q` | string | 自然言語クエリ（省略時はフィルタのみで全件ブラウズ）。タグ、OCR、地名、投稿キャプションに加え、切り出し枠のメモも対象 |
 | `date_from` / `date_to` | ISO8601 | 撮影日時範囲 |
 | `bbox` | `minLon,minLat,maxLon,maxLat` | GPS 矩形 |
 | `place` | string | 地名（都道府県/市区町村/POI 部分一致） |
