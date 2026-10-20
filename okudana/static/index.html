@@ -294,6 +294,23 @@
   dialog input[type=checkbox], dialog input[type=radio] {
     width:auto; margin:0; flex:none; accent-color:var(--accent);
   }
+  #expRegionList .exp-region-row { display:flex; flex-direction:column; gap:2px; }
+  #expRegionList .exp-region-main,
+  #expRegionList .exp-region-sub { display:flex; gap:4px; align-items:center; }
+  #expRegionList .exp-region-sub { padding-left:18px; }
+  #expRegionList .exp-region-slot {
+    width:14px; flex:none; font-size:11px; color:var(--ink2);
+  }
+  #expRegionList .exp-region-memo {
+    flex:1; min-width:0; width:auto; margin:0; padding:3px 6px; font-size:11.5px;
+  }
+  #expRegionList .exp-region-when {
+    flex:1; min-width:0; font-size:10.5px; color:var(--ink2);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  #expRegionList .exp-region-count {
+    flex:none; font-size:10.5px; color:var(--ink2); font-variant-numeric:tabular-nums;
+  }
   dialog .roots-list {
     display:grid; gap:6px; margin:8px 0; max-height:180px; overflow-y:auto;
   }
@@ -682,30 +699,48 @@
         <p id="expRegionHint" style="font-size:10.5px; color:var(--ink2); margin:0 0 6px">
           開いた直後の枠は、連射用にブラウザが覚えている直前の範囲です。書き出すと、この写真の新しい順に3件まで残ります。ロックした1件は上書きされません。メモは検索に含まれます。
         </p>
-        <div id="expRegionList" style="display:grid; gap:4px">
-          <div data-slot="1" style="display:grid; grid-template-columns:14px minmax(0,1fr) auto auto auto auto; gap:4px; align-items:center">
-            <span style="font-size:11px; color:var(--ink2)">1</span>
-            <input class="exp-region-memo" maxlength="200" placeholder="メモ（検索できます）" style="width:100%; margin:0; padding:3px 6px; font-size:11.5px">
-            <button type="button" class="ghost exp-region-save" style="font-size:11px;padding:3px 8px">記録</button>
-            <button type="button" class="ghost exp-region-load" style="font-size:11px;padding:3px 8px" disabled>呼出</button>
-            <button type="button" class="ghost exp-region-lock" style="font-size:11px;padding:3px 8px" disabled>ロック</button>
-            <button type="button" class="ghost exp-region-del" style="font-size:11px;padding:3px 8px" disabled>削除</button>
+        <div id="expRegionList" style="display:grid; gap:8px">
+          <div class="exp-region-row" data-slot="1">
+            <div class="exp-region-main">
+              <span class="exp-region-slot">1</span>
+              <input class="exp-region-memo" maxlength="200" placeholder="メモ（検索できます）">
+              <span class="exp-region-count">0/200</span>
+            </div>
+            <div class="exp-region-sub">
+              <span class="exp-region-when"></span>
+              <button type="button" class="ghost exp-region-save" style="font-size:11px;padding:3px 8px">記録</button>
+              <button type="button" class="ghost exp-region-load" style="font-size:11px;padding:3px 8px" disabled>呼出</button>
+              <button type="button" class="ghost exp-region-lock" style="font-size:11px;padding:3px 8px" disabled>ロック</button>
+              <button type="button" class="ghost exp-region-del" style="font-size:11px;padding:3px 8px" disabled>削除</button>
+            </div>
           </div>
-          <div data-slot="2" style="display:grid; grid-template-columns:14px minmax(0,1fr) auto auto auto auto; gap:4px; align-items:center">
-            <span style="font-size:11px; color:var(--ink2)">2</span>
-            <input class="exp-region-memo" maxlength="200" placeholder="メモ（検索できます）" style="width:100%; margin:0; padding:3px 6px; font-size:11.5px">
-            <button type="button" class="ghost exp-region-save" style="font-size:11px;padding:3px 8px">記録</button>
-            <button type="button" class="ghost exp-region-load" style="font-size:11px;padding:3px 8px" disabled>呼出</button>
-            <button type="button" class="ghost exp-region-lock" style="font-size:11px;padding:3px 8px" disabled>ロック</button>
-            <button type="button" class="ghost exp-region-del" style="font-size:11px;padding:3px 8px" disabled>削除</button>
+          <div class="exp-region-row" data-slot="2">
+            <div class="exp-region-main">
+              <span class="exp-region-slot">2</span>
+              <input class="exp-region-memo" maxlength="200" placeholder="メモ（検索できます）">
+              <span class="exp-region-count">0/200</span>
+            </div>
+            <div class="exp-region-sub">
+              <span class="exp-region-when"></span>
+              <button type="button" class="ghost exp-region-save" style="font-size:11px;padding:3px 8px">記録</button>
+              <button type="button" class="ghost exp-region-load" style="font-size:11px;padding:3px 8px" disabled>呼出</button>
+              <button type="button" class="ghost exp-region-lock" style="font-size:11px;padding:3px 8px" disabled>ロック</button>
+              <button type="button" class="ghost exp-region-del" style="font-size:11px;padding:3px 8px" disabled>削除</button>
+            </div>
           </div>
-          <div data-slot="3" style="display:grid; grid-template-columns:14px minmax(0,1fr) auto auto auto auto; gap:4px; align-items:center">
-            <span style="font-size:11px; color:var(--ink2)">3</span>
-            <input class="exp-region-memo" maxlength="200" placeholder="メモ（検索できます）" style="width:100%; margin:0; padding:3px 6px; font-size:11.5px">
-            <button type="button" class="ghost exp-region-save" style="font-size:11px;padding:3px 8px">記録</button>
-            <button type="button" class="ghost exp-region-load" style="font-size:11px;padding:3px 8px" disabled>呼出</button>
-            <button type="button" class="ghost exp-region-lock" style="font-size:11px;padding:3px 8px" disabled>ロック</button>
-            <button type="button" class="ghost exp-region-del" style="font-size:11px;padding:3px 8px" disabled>削除</button>
+          <div class="exp-region-row" data-slot="3">
+            <div class="exp-region-main">
+              <span class="exp-region-slot">3</span>
+              <input class="exp-region-memo" maxlength="200" placeholder="メモ（検索できます）">
+              <span class="exp-region-count">0/200</span>
+            </div>
+            <div class="exp-region-sub">
+              <span class="exp-region-when"></span>
+              <button type="button" class="ghost exp-region-save" style="font-size:11px;padding:3px 8px">記録</button>
+              <button type="button" class="ghost exp-region-load" style="font-size:11px;padding:3px 8px" disabled>呼出</button>
+              <button type="button" class="ghost exp-region-lock" style="font-size:11px;padding:3px 8px" disabled>ロック</button>
+              <button type="button" class="ghost exp-region-del" style="font-size:11px;padding:3px 8px" disabled>削除</button>
+            </div>
           </div>
         </div>
         <p id="expRegionStatus" style="font-size:11px; color:var(--ink2); margin:4px 0 0"></p>
@@ -1824,6 +1859,25 @@ function expRegionRow(slot) {
   return document.querySelector(`#expRegionList [data-slot="${slot}"]`);
 }
 
+// サーバのメモ上限（main.py の _clean_region_memo）と同じ。
+const EXPORT_REGION_MEMO_MAX = 200;
+
+function formatRegionUpdatedAt(s) {
+  // SQLite の datetime('now') は協定世界時。画面ではこのパソコンの時刻にする。
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(String(s || ""));
+  if (!m) return s ? String(s) : "";
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)));
+  if (Number.isNaN(d.getTime())) return String(s);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function exportRegionMemoCount(memo) {
+  const el = memo.closest("[data-slot]")?.querySelector(".exp-region-count");
+  if (!el) return;
+  el.textContent = `${memo.value.length}/${EXPORT_REGION_MEMO_MAX}`;
+}
+
 function showExportRegion(slot, rec) {
   const row = expRegionRow(slot);
   if (!row) return;
@@ -1831,6 +1885,17 @@ function showExportRegion(slot, rec) {
   else expSavedRegions.delete(slot);
   const memo = row.querySelector(".exp-region-memo");
   if (document.activeElement !== memo) memo.value = rec ? rec.memo : "";
+  memo.maxLength = EXPORT_REGION_MEMO_MAX;
+  exportRegionMemoCount(memo);
+  const when = row.querySelector(".exp-region-when");
+  if (rec?.updated_at) {
+    const label = formatRegionUpdatedAt(rec.updated_at);
+    when.textContent = "記録 " + label;
+    when.title = "この枠を記録した日時（このパソコンの時刻）";
+  } else {
+    when.textContent = "";
+    when.title = "";
+  }
   const locked = !!(rec && rec.locked);
   row.querySelector(".exp-region-load").disabled = !rec;
   row.querySelector(".exp-region-save").disabled = locked;
@@ -1992,6 +2057,11 @@ $("expRegionList").addEventListener("click", async (e) => {
       status.textContent = "エラー: " + err.message;
     }
   }
+});
+
+$("expRegionList").addEventListener("input", (e) => {
+  const memo = e.target.closest?.(".exp-region-memo");
+  if (memo) exportRegionMemoCount(memo);
 });
 
 $("expRegionList").addEventListener("focusout", async (e) => {
