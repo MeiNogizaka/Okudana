@@ -1651,7 +1651,7 @@ function saveExportPrefs() {
   const origH = exp.photo?.height || exp.img?.naturalHeight || 0;
   const isFull = exp.box && exp.box.w > 0.999 && exp.box.h > 0.999;
   // 写真ごとの枠を呼び出しただけでは、連射用の直前の枠を上書きしない。
-  // 透かしや解像度を変えても boxPx は元のまま。枠自体をドラッグしたら上書きする。
+  // 透かしや解像度を変えても boxPx は元のまま。枠を動かすか、その枠で書き出すと上書きする。
   // 画像サイズがまだ無いときや、ユーザが枠を触っていない全体表示では消さない。
   let boxPx;
   if (exp.regionRecall || !(origW > 0) || !(origH > 0)) {
@@ -1678,6 +1678,15 @@ function saveExportPrefs() {
     quality: +$("expQ").value, targetMib: $("expTargetMib").value,
     boxPx,
   }));
+}
+function commitExportedCrop() {
+  // 呼び出した枠でも、書き出しに成功した範囲を次の写真の初期枠にする。
+  const isFull = exp.box && exp.box.w > 0.999 && exp.box.h > 0.999;
+  if (!isFull) {
+    exp.regionRecall = false;
+    exp.boxEdited = true;
+  }
+  saveExportPrefs();
 }
 
 // --- 透かし位置 3x3 グリッド (中央は写真本体と重なるため選択不可) ---
@@ -2525,6 +2534,7 @@ $("expGo").onclick = async () => {
     a.click();
     URL.revokeObjectURL(url);
     $("expResult").textContent = "ダウンロードしました";
+    commitExportedCrop();
     const recorded = res.headers.get("X-Okudana-Export-Region");
     if (!exp.externalToken && (recorded === "insert" || recorded === "replace" || recorded === "touch" || recorded === "skip")) {
       await loadExportRegions();
