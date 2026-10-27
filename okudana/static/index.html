@@ -216,6 +216,30 @@
     border-radius:8px; padding:20px; min-width:420px;
   }
   dialog::backdrop { background:rgba(10,16,20,.5); }
+  /* 設定と書き出しは中でスクロールし、見出しの✕は右上に残す */
+  #setDlg, #expDlg {
+    padding:0; max-height:90vh; overflow:auto;
+  }
+  #setDlg { min-width:min(560px, calc(100vw - 2rem)); max-width:calc(100vw - 2rem); }
+  #expDlg {
+    min-width:min(640px, calc(100vw - 2rem));
+    width:min(94vw, 1200px); max-width:calc(100vw - 2rem);
+  }
+  .dlg-head {
+    position:sticky; top:0; z-index:3; display:flex; align-items:center; gap:10px;
+    padding:12px 14px; background:var(--card); border-bottom:1px solid var(--line);
+  }
+  .dlg-head b { font-size:15px; flex:none; }
+  .dlg-sub {
+    min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    color:var(--ink2); font-size:12px;
+  }
+  .dlg-body { padding:14px 20px 20px; }
+  .dlg-close {
+    margin-left:auto; flex:none; width:32px; height:32px; padding:0;
+    font-size:16px; line-height:1;
+    display:inline-flex; align-items:center; justify-content:center;
+  }
   #lightboxDlg {
     padding:0; min-width:0; width:min(96vw,1400px); max-width:none;
     background:#000; border:0;
@@ -258,7 +282,7 @@
   #lightboxDlg.palette-vertical .lb-palette {
     display:flex; flex-direction:column; gap:12px; flex:none; align-self:stretch;
     width:min(280px, 34vw); min-height:0; overflow:auto;
-    padding:12px 14px; background:#0c0c0c; color:#fff; box-sizing:border-box;
+    padding:48px 14px 12px; background:#0c0c0c; color:#fff; box-sizing:border-box;
   }
   #lightboxDlg .lb-swatch { display:flex; gap:8px; min-width:160px; max-width:280px; font-size:11px; text-align:left; line-height:1.45; }
   #lightboxDlg.palette-vertical .lb-swatch { max-width:none; }
@@ -269,12 +293,16 @@
   #lightboxDlg .lb-swatch b { font-family:ui-monospace, monospace; font-weight:600; letter-spacing:.02em; }
   #lightboxDlg .lb-axes { color:rgba(255,255,255,.88); }
   #lightboxDlg .lb-note { color:rgba(255,255,255,.72); }
-  #lightboxDlg .lb-close, #lightboxDlg .lb-nav {
+  #lightboxDlg .lb-nav {
     position:absolute; background:rgba(20,25,28,.55); color:#fff; border:0;
     border-radius:50%; width:38px; height:38px; font-size:18px; line-height:1;
     display:flex; align-items:center; justify-content:center; cursor:pointer;
   }
-  #lightboxDlg .lb-close { top:10px; right:10px; z-index:2; }
+  /* 写真の上でも読める色。大きさは設定・書き出しの✕と同じ */
+  #lightboxDlg .dlg-close {
+    position:absolute; top:10px; right:10px; z-index:4; margin:0;
+    background:rgba(20,25,28,.72); color:#fff; border:1px solid rgba(255,255,255,.45);
+  }
   #lightboxDlg .lb-prev { left:10px; top:50%; transform:translateY(-50%); z-index:2; }
   #lightboxDlg .lb-next { right:10px; top:50%; transform:translateY(-50%); z-index:2; }
   #lightboxDlg .lb-nav:disabled { opacity:.25; cursor:default; }
@@ -467,10 +495,13 @@
   <button id="settingsBtn" class="ghost" style="font-size:11px;padding:3px 10px" title="設定">⚙ 設定</button>
 </footer>
 
-<dialog id="setDlg" style="min-width:560px">
-  <b>設定</b>
-
-  <p class="lbl" style="margin-top:14px">対象フォルダ</p>
+<dialog id="setDlg">
+  <div class="dlg-head">
+    <b>設定</b>
+    <button type="button" class="dlg-close ghost" title="閉じる (Esc)" aria-label="閉じる" onclick="setDlg.close()">✕</button>
+  </div>
+  <div class="dlg-body">
+  <p class="lbl" style="margin-top:0">対象フォルダ</p>
   <div id="setRoots" class="roots-list">読み込み中…</div>
   <div class="btns">
     <button id="setAddRoot" class="ghost" style="font-size:11.5px">＋ フォルダを追加</button>
@@ -657,15 +688,17 @@
     地名情報の一部に GeoNames.org のデータ（CC BY 4.0）および
     OpenStreetMap のデータ（© OpenStreetMap contributors, ODbL）を使用しています。
   </p>
-
-  <div class="btns" style="justify-content:flex-end; margin-top:14px">
-    <button class="ghost" onclick="setDlg.close()">閉じる</button>
   </div>
 </dialog>
 
-<dialog id="expDlg" style="min-width:640px; width:min(94vw, 1200px); max-height:90vh; overflow-y:auto">
-  <b>書き出し</b> <span id="expName" style="color:var(--ink2);font-size:12px"></span>
-  <div style="display:flex; gap:16px; margin-top:12px">
+<dialog id="expDlg">
+  <div class="dlg-head">
+    <b>書き出し</b>
+    <span id="expName" class="dlg-sub"></span>
+    <button type="button" class="dlg-close ghost" title="閉じる (Esc)" aria-label="閉じる" onclick="expDlg.close()">✕</button>
+  </div>
+  <div class="dlg-body">
+  <div style="display:flex; gap:16px">
     <div id="expCanvasWrap" style="flex:1; min-width:0">
       <canvas id="expCanvas" width="420" height="300" style="touch-action:none; cursor:crosshair;
               background:var(--chip); border-radius:6px; display:block"></canvas>
@@ -813,19 +846,19 @@
       </div>
       <div class="btns" style="margin-top:14px">
         <button id="expGo" style="flex:1">書き出す</button>
-        <button class="ghost" onclick="expDlg.close()">閉じる</button>
       </div>
       <p id="expResult" style="font-size:11px; word-break:break-all; color:var(--ink2)"></p>
       <p style="font-size:10.5px; color:var(--ink2)">原本は変更されません</p>
     </div>
   </div>
+  </div>
 </dialog>
 
 <dialog id="lightboxDlg">
+  <button type="button" class="dlg-close" title="閉じる (Esc)" aria-label="閉じる" onclick="closeLightbox()">✕</button>
   <div class="lb-body">
     <div class="lb-main">
       <div class="lb-stage">
-        <button class="lb-close" title="閉じる (Esc)" onclick="closeLightbox()">✕</button>
         <button class="lb-nav lb-prev" title="前の写真 (←)" onclick="lightboxNav(-1)">‹</button>
         <img id="lbImg" alt="">
         <button class="lb-nav lb-next" title="次の写真 (→)" onclick="lightboxNav(1)">›</button>
