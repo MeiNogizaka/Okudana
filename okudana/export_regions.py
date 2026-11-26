@@ -11,14 +11,14 @@ from .fts import update_fts
 
 REGION_COLUMNS = (
     "slot, x, y, w, h, src_w, src_h, memo, locked, "
-    "frame_width, frame_color, updated_at"
+    "frame_width, frame_color, margin_width, margin_color, updated_at"
 )
 # 再書き出しを同じ記録とみなすゆらぎ。1px 未満の差で別件にしない程度。
 _MATCH_EPS = 1e-4
 
 
 def regions_match(row: sqlite3.Row | dict, region: dict, eps: float = _MATCH_EPS) -> bool:
-    """同じ作業画像サイズで、切り出しの位置と大きさが揃っている。縁は見ない。"""
+    """同じ作業画像サイズで、切り出しの位置と大きさが揃っている。縁と下余白は見ない。"""
     if int(row["src_w"]) != int(region["src_w"]) or int(row["src_h"]) != int(region["src_h"]):
         return False
     return all(abs(float(row[k]) - float(region[k])) <= eps for k in ("x", "y", "w", "h"))
@@ -27,7 +27,7 @@ def regions_match(row: sqlite3.Row | dict, region: dict, eps: float = _MATCH_EPS
 def plan_auto_record(rows: list[sqlite3.Row | dict], region: dict) -> dict:
     """自動記録の次の一手。
 
-    touch: 同じ枠がロックなしである。時刻と縁を新しくする。メモは残す。
+    touch: 同じ枠がロックなしである。時刻と縁と下余白を新しくする。メモは残す。
     skip: 同じ枠はロック中だけ、またはロック以外の空きが無い。
     insert: 空いている番号へ足す。
     replace: ロックしていない一番古い枠を、今回の範囲で上書きする。
@@ -73,32 +73,38 @@ def apply_auto_record(db: sqlite3.Connection, photo_id: int, region: dict) -> st
         return "skip"
     frame_width = int(region.get("frame_width") or 0)
     frame_color = region.get("frame_color") or ""
+    margin_width = int(region.get("margin_width") or 0)
+    margin_color = region.get("margin_color") or ""
     if op == "touch":
         db.execute(
             """UPDATE photo_export_regions
-                 SET frame_width=?, frame_color=?, updated_at=datetime('now')
+                 SET frame_width=?, frame_color=?, margin_width=?, margin_color=?,
+                     updated_at=datetime('now')
                WHERE photo_id=? AND slot=? AND locked=0""",
-            (frame_width, frame_color, photo_id, slot),
+            (frame_width, frame_color, margin_width, margin_color, photo_id, slot),
         )
         return "touch"
     if op == "insert":
         db.execute(
             """INSERT INTO photo_export_regions
                  (photo_id, slot, x, y, w, h, src_w, src_h, memo, locked,
-                  frame_width, frame_color, updated_at)
-               VALUES (?,?,?,?,?,?,?,?, '', 0, ?, ?, datetime('now'))""",
+                  frame_width, frame_color, margin_width, margin_color, updated_at)
+               VALUES (?,?,?,?,?,?,?,?, '', 0, ?, ?, ?, ?, datetime('now'))""",
             (photo_id, slot, region["x"], region["y"], region["w"], region["h"],
-             region["src_w"], region["src_h"], frame_width, frame_color),
+             region["src_w"], region["src_h"], frame_width, frame_color,
+             margin_width, margin_color),
         )
         update_fts(db, photo_id)
         return "insert"
     db.execute(
         """UPDATE photo_export_regions
              SET x=?, y=?, w=?, h=?, src_w=?, src_h=?, memo='',
-                 frame_width=?, frame_color=?, updated_at=datetime('now')
+                 frame_width=?, frame_color=?, margin_width=?, margin_color=?,
+                 updated_at=datetime('now')
            WHERE photo_id=? AND slot=? AND locked=0""",
         (region["x"], region["y"], region["w"], region["h"],
-         region["src_w"], region["src_h"], frame_width, frame_color, photo_id, slot),
+         region["src_w"], region["src_h"], frame_width, frame_color,
+         margin_width, margin_color, photo_id, slot),
     )
     update_fts(db, photo_id)
     return "replace"

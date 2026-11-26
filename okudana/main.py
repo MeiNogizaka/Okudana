@@ -499,7 +499,7 @@ def export_options():
 
 def _parse_export_request(body: dict) -> dict:
     """写真書き出しと、ライブラリ外の書き出しで共通のパラメータ検証。"""
-    from .export import MAX_EDGE_LIMIT, ExportRequestError, parse_frame
+    from .export import MAX_EDGE_LIMIT, ExportRequestError, parse_frame, parse_margin
     fmt = body.get("format", "jpeg")
     if fmt not in ("jpeg", "png", "webp"):
         raise HTTPException(422, "format must be jpeg|png|webp")
@@ -531,6 +531,7 @@ def _parse_export_request(body: dict) -> dict:
         target_bytes = int(target_mib * 1024 * 1024)  # 1 MiB = 1048576 バイト
     try:
         frame = parse_frame(body.get("frame"))
+        margin = parse_margin(body.get("margin"))
     except ExportRequestError as ex:
         raise HTTPException(422, str(ex))
     return {
@@ -543,6 +544,7 @@ def _parse_export_request(body: dict) -> dict:
         "max_edge": max_edge,
         "target_bytes": target_bytes,
         "frame": frame,
+        "margin": margin,
     }
 
 
@@ -576,7 +578,8 @@ def export(photo_id: int, body: dict = Body(default={})):
         db.execute("UPDATE photos SET exported_at=datetime('now') WHERE id=?", (photo_id,))
         # 自動記録に失敗しても書き出し自体は返す。範囲の保存だけ見送る。
         try:
-            region_action = _auto_record_on_export(p, opts.get("crop"), opts.get("frame"))
+            region_action = _auto_record_on_export(
+                p, opts.get("crop"), opts.get("frame"), opts.get("margin"))
         except Exception:
             log.exception("export region auto-record failed")
             db.rollback()
@@ -588,7 +591,7 @@ def export(photo_id: int, body: dict = Body(default={})):
     return resp
 
 
-def _auto_record_on_export(photo, crop, frame=None) -> str:
+def _auto_record_on_export(photo, crop, frame=None, margin=None) -> str:
     """設定がオンのとき、全体以外の切り出しを最新3件として残す。commit はしない。"""
     if get_setting("export_region_auto", "1") != "1":
         return "off"
@@ -605,6 +608,8 @@ def _auto_record_on_export(photo, crop, frame=None) -> str:
         }
         if frame:
             body["frame"] = frame
+        if margin:
+            body["margin"] = margin
         region = _parse_export_region(body)
     except HTTPException:
         return "skip"
@@ -631,9 +636,10 @@ def _parse_export_region(body: dict) -> dict:
     w, h = min(w, 1 - x), min(h, 1 - y)
     if w <= 0 or h <= 0:
         raise HTTPException(422, "crop is out of range")
-    from .export import ExportRequestError, parse_frame
+    from .export import ExportRequestError, parse_frame, parse_margin
     try:
         frame = parse_frame(body.get("frame"))
+        margin = parse_margin(body.get("margin"))
     except ExportRequestError as ex:
         raise HTTPException(422, str(ex))
     return {
@@ -641,6 +647,8 @@ def _parse_export_region(body: dict) -> dict:
         "memo": _clean_region_memo(body.get("memo")),
         "frame_width": frame["width"] if frame else 0,
         "frame_color": frame["color"] if frame else "",
+        "margin_width": margin["width"] if margin else 0,
+        "margin_color": margin["color"] if margin else "",
     }
 
 
@@ -681,17 +689,19 @@ def save_export_region(photo_id: int, slot: int, body: dict = Body(...)):
         db.execute(
             """INSERT INTO photo_export_regions
                  (photo_id, slot, x, y, w, h, src_w, src_h, memo,
-                  frame_width, frame_color, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?, datetime('now'))
+                  frame_width, frame_color, margin_width, margin_color, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))
                ON CONFLICT(photo_id, slot) DO UPDATE SET
                  x=excluded.x, y=excluded.y, w=excluded.w, h=excluded.h,
                  src_w=excluded.src_w, src_h=excluded.src_h,
                  memo=excluded.memo,
                  frame_width=excluded.frame_width, frame_color=excluded.frame_color,
+                 margin_width=excluded.margin_width, margin_color=excluded.margin_color,
                  updated_at=datetime('now')""",
             (photo_id, slot, region["x"], region["y"], region["w"], region["h"],
              region["src_w"], region["src_h"], region["memo"],
-             region["frame_width"], region["frame_color"]),
+             region["frame_width"], region["frame_color"],
+             region["margin_width"], region["margin_color"]),
         )
         fts.update_fts(db, photo_id)
         db.commit()

@@ -68,34 +68,46 @@ def _load_font(size: int, font_key: str | None = None) -> ImageFont.FreeTypeFont
 # 原寸 (max_edge=None) はこの制限の対象外
 MAX_EDGE_LIMIT = 16384
 
-# 枠の太さ（各辺、書き出し画像のピクセル）。index.html の FRAME_WIDTH_MAX と同じ。
+# 枠の太さと、写真の下に足す余白（書き出し画像のピクセル）。
+# index.html の FRAME_WIDTH_MAX / MARGIN_WIDTH_MAX と同じ。
 FRAME_WIDTH_MAX = 400
+MARGIN_WIDTH_MAX = 400
 
 
 class ExportRequestError(ValueError):
     """書き出しパラメータが不正。API では 422 にする。"""
 
 
-def parse_frame(raw) -> dict | None:
+def _parse_band(raw, name: str, limit: int) -> dict | None:
     """{"width": px, "color": "#RRGGBB"} を検証する。無し、または幅 0 は None。"""
     if raw is None:
         return None
     if not isinstance(raw, dict):
-        raise ExportRequestError("frame must be an object")
+        raise ExportRequestError(f"{name} must be an object")
     width = raw.get("width", 0)
     if isinstance(width, bool) or isinstance(width, float) and not width.is_integer():
-        raise ExportRequestError("frame.width must be an integer")
+        raise ExportRequestError(f"{name}.width must be an integer")
     if not isinstance(width, (int, float)):
-        raise ExportRequestError("frame.width must be an integer")
+        raise ExportRequestError(f"{name}.width must be an integer")
     width = int(width)
-    if not (0 <= width <= FRAME_WIDTH_MAX):
-        raise ExportRequestError(f"frame.width must be 0..{FRAME_WIDTH_MAX}")
+    if not (0 <= width <= limit):
+        raise ExportRequestError(f"{name}.width must be 0..{limit}")
     if width == 0:
         return None
     color = raw.get("color") or "#ffffff"
     if not isinstance(color, str) or not re.fullmatch(r"#[0-9A-Fa-f]{6}", color):
-        raise ExportRequestError("frame.color must be #RRGGBB")
+        raise ExportRequestError(f"{name}.color must be #RRGGBB")
     return {"width": width, "color": "#" + color[1:].lower()}
+
+
+def parse_frame(raw) -> dict | None:
+    """枠。無し、または幅 0 は None。"""
+    return _parse_band(raw, "frame", FRAME_WIDTH_MAX)
+
+
+def parse_margin(raw) -> dict | None:
+    """写真の下の余白。無し、または幅 0 は None。枠の内側に足す。"""
+    return _parse_band(raw, "margin", MARGIN_WIDTH_MAX)
 
 
 def frame_width_for(
@@ -124,10 +136,76 @@ def frame_width_for(
     return min(f, short // 2)
 
 
+def _place_width(src_w: int, src_h: int, long_edge: int, frame_w: int, margin_w: int):
+    photo_w = long_edge - 2 * frame_w
+    if photo_w < 1:
+        return None
+    photo_h = max(1, round(src_h * photo_w / src_w))
+    if photo_h + 2 * frame_w + margin_w <= long_edge:
+        return photo_w, photo_h
+    return None
+
+
+def _place_height(src_w: int, src_h: int, long_edge: int, frame_w: int, margin_w: int):
+    photo_h = long_edge - 2 * frame_w - margin_w
+    if photo_h < 1:
+        return None
+    photo_w = max(1, round(src_w * photo_h / src_h))
+    if photo_w + 2 * frame_w <= long_edge:
+        return photo_w, photo_h
+    return None
+
+
+def export_layout(
+    src_w: int, src_h: int, max_edge: int | None, frame_requested: int, margin_requested: int = 0,
+) -> tuple[int, int, int, int]:
+    """枠と下余白を足す前の写真サイズと、実際に使う太さ。
+
+    戻り値は (content_w, content_h, frame_w, margin_w)。
+    余白は写真の下、枠の内側。長辺指定があるときは、枠と余白を含んだ
+    ファイルの長辺が max_edge になる。原寸のときはその分だけファイルが大きくなる。
+    index.html の exportLayout と同じ手順（round は偶数丸め）。
+    """
+    if src_w <= 0 or src_h <= 0:
+        return 0, 0, 0, 0
+    margin_requested = min(MARGIN_WIDTH_MAX, max(0, int(margin_requested or 0)))
+    if margin_requested <= 0:
+        content_w, content_h, frame_w = framed_content_size(
+            src_w, src_h, max_edge, frame_requested)
+        return content_w, content_h, frame_w, 0
+    if not max_edge:
+        frame_w = frame_width_for(src_w, src_h, None, frame_requested)
+        return src_w, src_h, frame_w, margin_requested
+    long_edge = int(max_edge)
+    frame_w = min(frame_width_for(src_w, src_h, long_edge, frame_requested), (long_edge - 1) // 2)
+    margin_w = min(margin_requested, long_edge - 1)
+    while True:
+        if src_w >= src_h:
+            placed = _place_width(src_w, src_h, long_edge, frame_w, margin_w) \
+                or _place_height(src_w, src_h, long_edge, frame_w, margin_w)
+        else:
+            placed = _place_height(src_w, src_h, long_edge, frame_w, margin_w) \
+                or _place_width(src_w, src_h, long_edge, frame_w, margin_w)
+        if placed:
+            photo_w, photo_h = placed
+            if frame_w > 0 and 2 * frame_w > min(photo_w, photo_h):
+                frame_w -= 1
+                continue
+            return photo_w, photo_h, frame_w, margin_w
+        if margin_w > 0:
+            margin_w -= 1
+            continue
+        if frame_w > 0:
+            frame_w -= 1
+            continue
+        content_w, content_h, _ = framed_content_size(src_w, src_h, long_edge, 0)
+        return content_w, content_h, 0, 0
+
+
 def framed_content_size(
     src_w: int, src_h: int, max_edge: int | None, requested: int,
 ) -> tuple[int, int, int]:
-    """枠を足す前の写真サイズと、実際に使う枠幅。
+    """枠を足す前の写真サイズと、実際に使う枠幅。余白は含まない。
 
     戻り値は (content_w, content_h, frame_w)。frame_w > 0 かつ max_edge
     があるとき、ファイルの長辺は content の長辺 + 2*frame_w = max_edge。
@@ -207,6 +285,7 @@ def export_photo(
     max_edge: int | None = 2048,
     target_bytes: int | None = None,   # JPEG/WebP のみ。このバイト数以下になるよう quality を調整
     frame: dict | None = None,         # {width, color}。幅 0 / None は枠なし
+    margin: dict | None = None,        # {width, color}。写真の下、枠の内側。幅 0 / None はなし
 ) -> tuple[bytes, str]:
     # with で開き、画素データを読み切ってから閉じる (開いたままだと大量書き出し時に
     # FD を消費し続ける。scanner.py の extract_one と同じ理由)。RAWはscanner.pyと
@@ -232,19 +311,23 @@ def export_photo(
         if box[2] - box[0] >= 16 and box[3] - box[1] >= 16:
             img = img.crop(box)
 
-    # 枠は切り出しの後。長辺を指定しているときは、枠を含んだファイルの長辺が
-    # その数字になるよう、先に中の写真だけを縮める（または拡げる）。
-    # 透かしは枠の内側の写真に載せる。枠の色は最後に外側へ足す。
-    requested = int(frame["width"]) if frame else 0
-    frame_w = framed_content_size(img.width, img.height, max_edge, requested)[2]
-    if frame_w > 0 and max_edge:
-        img = _resize_long_edge(img, max_edge - 2 * frame_w)
-    elif max_edge:
-        img = _resize_long_edge(img, max_edge)
+    # 枠と下の余白は切り出しの後。長辺を指定しているときは、両方を含んだ
+    # ファイルの長辺がその数字になるよう、先に中の写真だけを縮める（または拡げる）。
+    # 透かしは写真に載せる。余白はその下、枠は一番外側。
+    frame_requested = int(frame["width"]) if frame else 0
+    margin_requested = int(margin["width"]) if margin else 0
+    content_w, content_h, frame_w, margin_w = export_layout(
+        img.width, img.height, max_edge, frame_requested, margin_requested)
+    if content_w > 0 and content_h > 0 and (content_w, content_h) != img.size:
+        img = img.resize((content_w, content_h), Image.LANCZOS)
 
     if watermark and (watermark.get("text") or watermark.get("image_data_url")):
         img = _draw_watermark(img, watermark)
 
+    if margin_w > 0:
+        band = Image.new("RGB", (img.width, img.height + margin_w), _frame_rgb(margin["color"]))
+        band.paste(img, (0, 0))
+        img = band
     if frame_w > 0:
         img = ImageOps.expand(img, border=frame_w, fill=_frame_rgb(frame["color"]))
 

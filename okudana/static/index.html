@@ -733,7 +733,7 @@
       <div id="expRegions" hidden style="margin-top:10px">
         <p class="lbl" style="margin-bottom:4px">この写真の切り出し</p>
         <p id="expRegionHint" style="font-size:10.5px; color:var(--ink2); margin:0 0 6px">
-          開いた直後の枠は、連射用にブラウザが覚えている直前の範囲です。書き出すと、この写真の新しい順に3件まで残ります。縁の色と太さも一緒に残り、呼び出すと戻ります。ロックした1件は上書きされません。メモは検索に含まれます。
+          開いた直後の枠は、連射用にブラウザが覚えている直前の範囲です。書き出すと、この写真の新しい順に3件まで残ります。縁と下の余白も一緒に残り、呼び出すと戻ります。ロックした1件は上書きされません。メモは検索に含まれます。
         </p>
         <div id="expRegionList" style="display:grid; gap:8px">
           <div class="exp-region-row" data-slot="1">
@@ -843,8 +843,25 @@
           <span>px</span>
         </div>
         <p id="expFrameReadout" style="font-size:10.5px; color:var(--ink2); margin:0 0 4px"></p>
-        <p style="font-size:10.5px; color:var(--ink2); margin:0 0 6px">長辺を指定したときは、枠を含めてその長さになります。</p>
       </div>
+      <p class="lbl">下の余白</p>
+      <div style="display:flex; gap:6px; align-items:center; font-size:11px; color:var(--ink2); margin-bottom:4px">
+        <span style="flex:none">高さ</span>
+        <input id="expMarginWidth" type="range" min="0" max="400" step="1" value="0" aria-label="下の余白" style="flex:1">
+        <input id="expMarginWidthNum" type="number" min="0" max="400" value="0" aria-label="下の余白（px）" style="width:52px; margin:0; padding:3px 4px; font-size:11px">
+        <span>px</span>
+      </div>
+      <div id="expMarginColorRow" style="display:none; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap">
+        <button type="button" data-m="white" style="font-size:11px;padding:3px 8px">白</button>
+        <button type="button" class="ghost" data-m="black" style="font-size:11px;padding:3px 8px">黒</button>
+        <button type="button" class="ghost" data-m="color" style="font-size:11px;padding:3px 8px">色</button>
+        <span id="expMarginPicker" style="display:none; gap:6px; align-items:center">
+          <input id="expMarginColor" type="color" value="#ffffff" aria-label="下の余白の色" style="width:28px; height:22px; padding:0; margin:0; border:1px solid var(--line); background:transparent">
+          <span id="expMarginColorHex" style="font:11px ui-monospace,Consolas,monospace">#ffffff</span>
+        </span>
+      </div>
+      <p id="expMarginReadout" style="font-size:10.5px; color:var(--ink2); margin:0 0 4px"></p>
+      <p id="expChromeHint" style="display:none; font-size:10.5px; color:var(--ink2); margin:0 0 6px">長辺を指定したときは、枠と下の余白を含めてその長さになります。</p>
       <p class="lbl">出力</p>
       <div style="display:grid; grid-template-columns:44px 1fr; gap:4px 8px; align-items:center">
         <span>形式</span>
@@ -855,7 +872,7 @@
         </select>
         <span>長辺</span>
         <span style="display:flex; gap:4px; align-items:center">
-          <select id="expEdge" title="枠を付けるときは、枠を含んだファイルの長辺" style="flex:1; min-width:0; background:var(--paper); color:var(--ink); border:1px solid var(--line); border-radius:5px; padding:4px">
+          <select id="expEdge" title="枠や下の余白を付けるときは、それらを含んだファイルの長辺" style="flex:1; min-width:0; background:var(--paper); color:var(--ink); border:1px solid var(--line); border-radius:5px; padding:4px">
             <option value="" selected>原寸</option>
             <option value="4096">4096px</option>
             <option value="2048">2048px</option><option value="1600">1600px</option>
@@ -946,8 +963,8 @@ function applyPaletteSettings(s) {
 }
 function exportRegionHintText() {
   return exportRegionAuto
-    ? "開いた直後の枠は、連射用にブラウザが覚えている直前の範囲です。書き出すと、この写真の新しい順に3件まで残ります。縁の色と太さも一緒に残り、呼び出すと戻ります。ロックした1件は上書きされません。メモは検索に含まれます。"
-    : "開いた直後の枠は、連射用にブラウザが覚えている直前の範囲です。自動記録はオフです。残すときは記録を押します。縁の色と太さも一緒に残り、呼び出すと戻ります。ロックした1件は上書きされません。メモは検索に含まれます。";
+    ? "開いた直後の枠は、連射用にブラウザが覚えている直前の範囲です。書き出すと、この写真の新しい順に3件まで残ります。縁と下の余白も一緒に残り、呼び出すと戻ります。ロックした1件は上書きされません。メモは検索に含まれます。"
+    : "開いた直後の枠は、連射用にブラウザが覚えている直前の範囲です。自動記録はオフです。残すときは記録を押します。縁と下の余白も一緒に残り、呼び出すと戻ります。ロックした1件は上書きされません。メモは検索に含まれます。";
 }
 function applyExportRegionAuto(s) {
   exportRegionAuto = s.export_region_auto !== false;
@@ -1630,7 +1647,7 @@ $("tagInput").addEventListener("input", async e => {
 const exp = {
   photo: null, img: null, aspect: null, box: null, drag: null, aspectFlip: false,
   externalToken: null, regionRecall: false, suspendPrefs: false, boxEdited: false,
-  frameMode: "none",
+  frameMode: "none", marginMode: "white",
 };
 const CROP_MIN = 0.03;  // 枠の最小サイズ（正規化）
 const CROP_HANDLES = [
@@ -1663,6 +1680,7 @@ const EXPORT_DEFAULTS = {
   wmMode: "text", wmImgSize: 20,
   gps: true, format: "png", edge: "", edgePx: "", quality: 95, targetMib: "",
   frameMode: "none", frameColor: "#336699", frameWidth: 48,
+  marginMode: "white", marginColor: "#ffffff", marginWidth: 0,
   boxPx: null,  // {x, y, w, h, origW, origH} 原寸px。nullなら全体 (未指定/前回リセット済み)
 };
 function loadExportPrefs() {
@@ -1740,6 +1758,8 @@ function saveExportPrefs() {
     quality: +$("expQ").value, targetMib: $("expTargetMib").value,
     frameMode: expFrameMode(), frameColor: $("expFrameColor").value,
     frameWidth: expFrameRequestedWidth(),
+    marginMode: expMarginMode(), marginColor: $("expMarginColor").value,
+    marginWidth: expMarginRequestedWidth(),
     boxPx,
   }));
 }
@@ -1839,9 +1859,11 @@ function syncExpEdgePxVisibility() {
   $("expEdgePx").style.display = $("expEdge").value === "custom" ? "" : "none";
 }
 
-// 枠の太さ。export.py の FRAME_WIDTH_MAX / frameWidthFor / framed_content_size と同じ。
+// 枠の太さと下余白。export.py の FRAME_WIDTH_MAX / MARGIN_WIDTH_MAX /
+// frameWidthFor / framed_content_size / export_layout と同じ。
 // round は Python の偶数丸めに合わせる（0.5 は Math.round と結果が違う）。
 const FRAME_WIDTH_MAX = 400;
+const MARGIN_WIDTH_MAX = 400;
 function pythonRound(x) {
   const floor = Math.floor(x);
   const frac = x - floor;
@@ -1888,6 +1910,57 @@ function framedContentSize(srcW, srcH, maxEdge, requested) {
   }
   return {contentW: srcW, contentH: srcH, f};
 }
+function placeExportWidth(srcW, srcH, longEdge, frameW, marginW) {
+  const photoW = longEdge - 2 * frameW;
+  if (photoW < 1) return null;
+  const photoH = Math.max(1, pythonRound(srcH * photoW / srcW));
+  if (photoH + 2 * frameW + marginW <= longEdge) return {photoW, photoH};
+  return null;
+}
+function placeExportHeight(srcW, srcH, longEdge, frameW, marginW) {
+  const photoH = longEdge - 2 * frameW - marginW;
+  if (photoH < 1) return null;
+  const photoW = Math.max(1, pythonRound(srcW * photoH / srcH));
+  if (photoW + 2 * frameW <= longEdge) return {photoW, photoH};
+  return null;
+}
+// 余白 0 のときは framedContentSize のまま。余白があるときだけこちら。
+function exportLayout(srcW, srcH, maxEdge, frameRequested, marginRequested) {
+  marginRequested = Math.min(MARGIN_WIDTH_MAX, Math.max(0, Math.round(+marginRequested || 0)));
+  if (!(marginRequested > 0)) {
+    const sized = framedContentSize(srcW, srcH, maxEdge, frameRequested);
+    return {...sized, m: 0};
+  }
+  if (!(srcW > 0) || !(srcH > 0)) return {contentW: 0, contentH: 0, f: 0, m: 0};
+  if (!maxEdge) {
+    return {
+      contentW: srcW, contentH: srcH,
+      f: frameWidthFor(srcW, srcH, null, frameRequested),
+      m: marginRequested,
+    };
+  }
+  const longEdge = maxEdge;
+  let frameW = Math.min(frameWidthFor(srcW, srcH, longEdge, frameRequested), Math.floor((longEdge - 1) / 2));
+  let marginW = Math.min(marginRequested, longEdge - 1);
+  while (true) {
+    const placed = srcW >= srcH
+      ? (placeExportWidth(srcW, srcH, longEdge, frameW, marginW)
+        || placeExportHeight(srcW, srcH, longEdge, frameW, marginW))
+      : (placeExportHeight(srcW, srcH, longEdge, frameW, marginW)
+        || placeExportWidth(srcW, srcH, longEdge, frameW, marginW));
+    if (placed) {
+      if (frameW > 0 && 2 * frameW > Math.min(placed.photoW, placed.photoH)) {
+        frameW -= 1;
+        continue;
+      }
+      return {contentW: placed.photoW, contentH: placed.photoH, f: frameW, m: marginW};
+    }
+    if (marginW > 0) { marginW -= 1; continue; }
+    if (frameW > 0) { frameW -= 1; continue; }
+    const sized = framedContentSize(srcW, srcH, longEdge, 0);
+    return {...sized, m: 0};
+  }
+}
 function expFrameMode() {
   return exp.frameMode === "white" || exp.frameMode === "black" || exp.frameMode === "color"
     ? exp.frameMode : "none";
@@ -1910,13 +1983,36 @@ function expOutputMetrics() {
   const srcW = Math.round(exp.box.w * origW), srcH = Math.round(exp.box.h * origH);
   const maxEdge = getExpMaxEdge();
   const requested = expFrameMode() === "none" ? 0 : expFrameRequestedWidth();
-  const sized = framedContentSize(srcW, srcH, maxEdge, requested);
+  const marginRequested = expMarginRequestedWidth();
+  const sized = exportLayout(srcW, srcH, maxEdge, requested, marginRequested);
   return {
-    srcW, srcH, origW, origH, maxEdge, requested,
+    srcW, srcH, origW, origH, maxEdge, requested, marginRequested,
     ...sized,
     outW: sized.contentW + 2 * sized.f,
-    outH: sized.contentH + 2 * sized.f,
+    outH: sized.contentH + 2 * sized.f + sized.m,
   };
+}
+function expMarginMode() {
+  return exp.marginMode === "black" || exp.marginMode === "color" ? exp.marginMode : "white";
+}
+function expMarginRequestedWidth() {
+  const n = Math.round(+$("expMarginWidth").value);
+  if (!(n > 0)) return 0;
+  return Math.min(MARGIN_WIDTH_MAX, n);
+}
+function expMarginColor() {
+  if (expMarginMode() === "black") return "#000000";
+  if (expMarginMode() === "color") {
+    const c = String($("expMarginColor").value || "").toLowerCase();
+    return /^#[0-9a-f]{6}$/.test(c) ? c : "#ffffff";
+  }
+  return "#ffffff";
+}
+function syncChromeHint() {
+  const hint = $("expChromeHint");
+  if (!hint) return;
+  const on = expFrameMode() !== "none" || expMarginRequestedWidth() > 0;
+  hint.style.display = on ? "block" : "none";
 }
 function updateFrameReadout(metrics) {
   const el = $("expFrameReadout");
@@ -1939,6 +2035,26 @@ function updateFrameReadout(metrics) {
     ? `この写真では各辺 ${metrics.f}px（短辺の ${pctText}%）`
     : `各辺 ${metrics.f}px（短辺の ${pctText}%）`;
 }
+function updateMarginReadout(metrics) {
+  const el = $("expMarginReadout");
+  if (!el) return;
+  const requested = expMarginRequestedWidth();
+  if (!(requested > 0)) { el.textContent = ""; return; }
+  metrics = metrics || expOutputMetrics();
+  if (!metrics || !(metrics.srcH > 0)) {
+    el.textContent = `下に ${requested}px`;
+    return;
+  }
+  if (metrics.m <= 0) {
+    el.textContent = "この長辺には下の余白が入りません";
+    return;
+  }
+  const pct = metrics.contentH > 0 ? (metrics.m / metrics.contentH * 100) : 0;
+  const pctText = pct >= 10 ? pct.toFixed(0) : pct.toFixed(1);
+  el.textContent = metrics.m !== requested
+    ? `この写真では下に ${metrics.m}px（写真の高さの ${pctText}%）`
+    : `下に ${metrics.m}px（写真の高さの ${pctText}%）`;
+}
 function setFrameWidth(n, save) {
   n = Math.round(+n);
   if (!(n >= 1)) n = 48;
@@ -1946,7 +2062,7 @@ function setFrameWidth(n, save) {
   $("expFrameWidth").value = String(n);
   $("expFrameWidthNum").value = String(n);
   if (save) { drawExport(); saveExportPrefs(); }
-  else updateFrameReadout();
+  else { updateFrameReadout(); updateMarginReadout(); }
 }
 function setFrameMode(mode) {
   exp.frameMode = mode === "white" || mode === "black" || mode === "color" ? mode : "none";
@@ -1955,7 +2071,28 @@ function setFrameMode(mode) {
   for (const b of $("expFrameMode").children) {
     b.classList.toggle("ghost", b.dataset.m !== exp.frameMode);
   }
+  syncChromeHint();
   updateFrameReadout();
+  updateMarginReadout();
+}
+function setMarginWidth(n, save) {
+  n = Math.round(+n);
+  if (!(n >= 0)) n = 0;
+  n = Math.min(MARGIN_WIDTH_MAX, Math.max(0, n));
+  $("expMarginWidth").value = String(n);
+  $("expMarginWidthNum").value = String(n);
+  $("expMarginColorRow").style.display = n > 0 ? "flex" : "none";
+  syncChromeHint();
+  if (save) { drawExport(); saveExportPrefs(); }
+  else updateMarginReadout();
+}
+function setMarginMode(mode) {
+  exp.marginMode = mode === "black" || mode === "color" ? mode : "white";
+  $("expMarginPicker").style.display = exp.marginMode === "color" ? "flex" : "none";
+  for (const b of $("expMarginColorRow").querySelectorAll("[data-m]")) {
+    b.classList.toggle("ghost", b.dataset.m !== exp.marginMode);
+  }
+  updateMarginReadout();
 }
 function frameInk(hex) {
   const n = Number.parseInt(String(hex).slice(1), 16);
@@ -1965,20 +2102,27 @@ function frameInk(hex) {
 }
 // 切り出しを端まで寄せても枠が見えるよう、写真の周囲に余白を残す。
 // 余白は写真全体で決め、ドラッグ中に写真がずれないようにする。
-function expFramePad(canvasW, canvasH, iw, ih) {
-  const requested = expFrameMode() === "none" ? 0 : expFrameRequestedWidth();
-  if (!(requested > 0) || !(iw > 0) || !(ih > 0)) return 0;
+function expChromePad(canvasW, canvasH, iw, ih) {
+  const none = {left: 0, right: 0, top: 0, bottom: 0};
+  const frameReq = expFrameMode() === "none" ? 0 : expFrameRequestedWidth();
+  const marginReq = expMarginRequestedWidth();
+  if (!(frameReq > 0 || marginReq > 0) || !(iw > 0) || !(ih > 0)) return none;
   const origW = exp.photo?.width || iw;
   const origH = exp.photo?.height || ih;
-  const maxEdge = getExpMaxEdge();
-  const sized = framedContentSize(origW, origH, maxEdge, requested);
-  if (!(sized.f > 0)) return 0;
+  const sized = exportLayout(origW, origH, getExpMaxEdge(), frameReq, marginReq);
+  if (!(sized.f > 0 || sized.m > 0)) return none;
   const outW = sized.contentW + 2 * sized.f;
-  const outH = sized.contentH + 2 * sized.f;
-  const pW = sized.f * canvasW / outW;
-  const photoH = ih * (canvasW - 2 * pW) / iw;
-  if (photoH <= canvasH - 2 * pW + 0.5) return Math.max(0, pW);
-  return Math.max(0, sized.f * canvasH / outH);
+  const outH = sized.contentH + 2 * sized.f + sized.m;
+  const padAt = (scale) => ({
+    left: Math.max(0, sized.f * scale),
+    right: Math.max(0, sized.f * scale),
+    top: Math.max(0, sized.f * scale),
+    bottom: Math.max(0, (sized.f + sized.m) * scale),
+  });
+  const byWidth = padAt(canvasW / outW);
+  const photoH = ih * (canvasW - byWidth.left - byWidth.right) / iw;
+  if (photoH <= canvasH - byWidth.top - byWidth.bottom + 0.5) return byWidth;
+  return padAt(canvasH / outH);
 }
 
 async function openExport(photo) {
@@ -2041,6 +2185,11 @@ async function openExport(photo) {
     $("expFrameColorHex").textContent = frameColor.toLowerCase();
     setFrameWidth(prefs.frameWidth, false);
     setFrameMode(prefs.frameMode);
+    const marginColor = /^#[0-9A-Fa-f]{6}$/.test(prefs.marginColor || "") ? prefs.marginColor : "#ffffff";
+    $("expMarginColor").value = marginColor;
+    $("expMarginColorHex").textContent = marginColor.toLowerCase();
+    setMarginWidth(prefs.marginWidth, false);
+    setMarginMode(prefs.marginMode);
     syncExpEdgePxVisibility();
     updateExpFormatUI();
     if (placed?.how === "center") {
@@ -2117,9 +2266,11 @@ function showExportRegion(slot, rec) {
     when.title = "";
   }
   const frameLabel = regionFrameLabel(rec);
+  const marginLabel = regionMarginLabel(rec);
+  const chromeLabel = [frameLabel, marginLabel].filter(Boolean).join(" ");
   const frameEl = row.querySelector(".exp-region-frame");
-  frameEl.textContent = frameLabel;
-  frameEl.title = frameLabel ? "記録した縁" : "";
+  frameEl.textContent = chromeLabel;
+  frameEl.title = chromeLabel ? "記録した縁と下の余白" : "";
   const locked = !!(rec && rec.locked);
   row.querySelector(".exp-region-load").disabled = !rec;
   row.querySelector(".exp-region-save").disabled = locked;
@@ -2131,17 +2282,27 @@ function showExportRegion(slot, rec) {
   lock.title = locked ? "ロックを外す" : "この1件を残し、自動記録で上書きしない";
   const load = row.querySelector(".exp-region-load");
   load.title = rec
-    ? [`${Math.round(rec.w * rec.src_w)}×${Math.round(rec.h * rec.src_h)}`, frameLabel]
+    ? [`${Math.round(rec.w * rec.src_w)}×${Math.round(rec.h * rec.src_h)}`, chromeLabel]
         .filter(Boolean).join(" ")
     : "";
 }
 
+function regionColorName(color) {
+  if (color === "#ffffff") return "白";
+  if (color === "#000000") return "黒";
+  return color;
+}
 function regionFrameLabel(rec) {
   const width = +rec?.frame_width || 0;
   const color = String(rec?.frame_color || "").toLowerCase();
   if (!(width > 0) || !/^#[0-9a-f]{6}$/.test(color)) return "";
-  const name = color === "#ffffff" ? "白" : color === "#000000" ? "黒" : color;
-  return `${name} ${width}px`;
+  return `${regionColorName(color)} ${width}px`;
+}
+function regionMarginLabel(rec) {
+  const width = +rec?.margin_width || 0;
+  const color = String(rec?.margin_color || "").toLowerCase();
+  if (!(width > 0) || !/^#[0-9a-f]{6}$/.test(color)) return "";
+  return `下${regionColorName(color)} ${width}px`;
 }
 
 function applyRecordedFrame(rec) {
@@ -2159,6 +2320,23 @@ function applyRecordedFrame(rec) {
     $("expFrameColorHex").textContent = color;
     setFrameMode("color");
   }
+}
+
+function applyRecordedMargin(rec) {
+  const width = +rec?.margin_width || 0;
+  const color = String(rec?.margin_color || "").toLowerCase();
+  if (!(width > 0) || !/^#[0-9a-f]{6}$/.test(color)) {
+    setMarginWidth(0, false);
+    return;
+  }
+  if (color !== "#ffffff" && color !== "#000000") {
+    $("expMarginColor").value = color;
+    $("expMarginColorHex").textContent = color;
+  }
+  setMarginWidth(width, false);
+  if (color === "#ffffff") setMarginMode("white");
+  else if (color === "#000000") setMarginMode("black");
+  else setMarginMode("color");
 }
 
 function orderExportRegionRows() {
@@ -2225,10 +2403,15 @@ function recallExportRegion(rec) {
     $("expRegionStatus").textContent = "解像度が違うので、同じ大きさで中央に置きました";
   }
   applyRecordedFrame(rec);
+  applyRecordedMargin(rec);
   const frameLabel = regionFrameLabel(rec);
+  const marginLabel = regionMarginLabel(rec);
   $("expRegionStatus").textContent += frameLabel
     ? `。縁は${frameLabel}に戻しました`
     : "。縁は外しました";
+  $("expRegionStatus").textContent += marginLabel
+    ? `。下の余白は${marginLabel.replace(/^下/, "")}に戻しました`
+    : "。下の余白は外しました";
   exp.regionRecall = true;
   drawExport();
 }
@@ -2263,6 +2446,7 @@ $("expRegionList").addEventListener("click", async (e) => {
           x: exp.box.x, y: exp.box.y, w: exp.box.w, h: exp.box.h,
           src_w: origW, src_h: origH, memo,
           frame: buildFramePayload(),
+          margin: buildMarginPayload(),
         }),
       });
       showExportRegion(slot, saved);
@@ -2373,12 +2557,16 @@ window.addEventListener("resize", () => {
 function expImageRect() {
   const c = $("expCanvas");
   const iw = exp.img.naturalWidth, ih = exp.img.naturalHeight;
-  const pad = expFramePad(c.width, c.height, iw, ih);
-  const availW = Math.max(1, c.width - 2 * pad);
-  const availH = Math.max(1, c.height - 2 * pad);
+  const pad = expChromePad(c.width, c.height, iw, ih);
+  const availW = Math.max(1, c.width - pad.left - pad.right);
+  const availH = Math.max(1, c.height - pad.top - pad.bottom);
   const scale = Math.min(availW / iw, availH / ih);
   const dw = iw * scale, dh = ih * scale;
-  return { dx: (c.width - dw) / 2, dy: (c.height - dh) / 2, dw, dh };
+  return {
+    dx: pad.left + (availW - dw) / 2,
+    dy: pad.top + (availH - dh) / 2,
+    dw, dh,
+  };
 }
 
 function expBoxPx(box) {
@@ -2410,22 +2598,29 @@ function drawExport() {
   ctx.fillRect(0, box.y, box.x, box.h);
   ctx.fillRect(box.x + box.w, box.y, c.width - box.x - box.w, box.h);
 
-  // 枠は切り出しが決まってから外側に足す。帯はドラッグの対象にしない。
+  // 枠と下の余白は切り出しが決まってから外側に足す。帯はドラッグの対象にしない。
   // 太さは、画面上の切り出し幅と出力される中の写真の幅の比に合わせる。
+  // 余白は写真の下、枠の内側。
   const metrics = expOutputMetrics();
-  let frameOn = false;
-  if (metrics && metrics.f > 0 && metrics.contentW > 0 && box.w > 0 && box.h > 0) {
-    frameOn = true;
-    const t = metrics.f * box.w / metrics.contentW;
-    const color = expFrameColor();
+  const band = metrics && metrics.contentW > 0 && box.w > 0 && box.h > 0;
+  const t = band && metrics.f > 0 ? metrics.f * box.w / metrics.contentW : 0;
+  const mb = band && metrics.m > 0 ? metrics.m * box.w / metrics.contentW : 0;
+  const frameOn = t > 0;
+  if (t > 0 || mb > 0) {
     const x0 = box.x - t, y0 = box.y - t;
-    const fw = box.w + 2 * t, fh = box.h + 2 * t;
-    ctx.fillStyle = color;
-    ctx.fillRect(x0, y0, fw, t);
-    ctx.fillRect(x0, y0 + fh - t, fw, t);
-    ctx.fillRect(x0, y0 + t, t, Math.max(0, fh - 2 * t));
-    ctx.fillRect(x0 + fw - t, y0 + t, t, Math.max(0, fh - 2 * t));
-    ctx.strokeStyle = frameInk(color);
+    const fw = box.w + 2 * t, fh = box.h + mb + 2 * t;
+    if (t > 0) {
+      ctx.fillStyle = expFrameColor();
+      ctx.fillRect(x0, y0, fw, t);
+      ctx.fillRect(x0, y0 + fh - t, fw, t);
+      ctx.fillRect(x0, y0 + t, t, Math.max(0, fh - 2 * t));
+      ctx.fillRect(x0 + fw - t, y0 + t, t, Math.max(0, fh - 2 * t));
+    }
+    if (mb > 0) {
+      ctx.fillStyle = expMarginColor();
+      ctx.fillRect(box.x, box.y + box.h, box.w, mb);
+    }
+    ctx.strokeStyle = frameInk(t > 0 ? expFrameColor() : expMarginColor());
     ctx.lineWidth = 1;
     ctx.strokeRect(box.x + 0.5, box.y + 0.5, Math.max(0, box.w - 1), Math.max(0, box.h - 1));
   } else {
@@ -2452,12 +2647,15 @@ function drawExport() {
   // 全画面切り出しだと枠の内側に重なり写真を隠すため。数値の意味は従来どおり:
   // プレビュー画像 (1600px上限) ではなく原本解像度を基準にし、長辺指定の
   // 拡大・縮小も export.py の framed_content_size() と同じ計算で最終pxを表示する。
-  // 枠があるときは出力に枠を含める。長辺を指定しているとその長辺は枠込み。
+  // 枠や下の余白があるときは出力に含める。長辺を指定しているとその長辺は両方込み。
+  // 枠が付くときは「枠含む出力」、余白だけのときは「余白含む出力」。
   // 原寸と出力が同じピクセルでも両方の行を残す。
   if (metrics) {
+    const outName = metrics.f > 0 ? "枠含む出力" : metrics.m > 0 ? "余白含む出力" : "出力";
     $("expDimLabel").textContent =
-      `原寸 ${metrics.srcW} × ${metrics.srcH}px\n出力 ${metrics.outW} × ${metrics.outH}px`;
+      `原寸 ${metrics.srcW} × ${metrics.srcH}px\n${outName} ${metrics.outW} × ${metrics.outH}px`;
     updateFrameReadout(metrics);
+    updateMarginReadout(metrics);
   }
 
   if (box.w <= 10 || box.h <= 10) return;
@@ -2747,6 +2945,25 @@ $("expFrameColor").addEventListener("input", () => {
   $("expFrameColorHex").textContent = $("expFrameColor").value.toLowerCase();
   drawExport(); saveExportPrefs();
 });
+$("expMarginColorRow").addEventListener("click", e => {
+  const b = e.target.closest("[data-m]");
+  if (!b) return;
+  setMarginMode(b.dataset.m);
+  drawExport(); saveExportPrefs();
+});
+$("expMarginWidth").addEventListener("input", () => {
+  $("expMarginWidthNum").value = $("expMarginWidth").value;
+  $("expMarginColorRow").style.display = +$("expMarginWidth").value > 0 ? "flex" : "none";
+  syncChromeHint();
+  drawExport(); saveExportPrefs();
+});
+$("expMarginWidthNum").addEventListener("change", () => {
+  setMarginWidth(+$("expMarginWidthNum").value, true);
+});
+$("expMarginColor").addEventListener("input", () => {
+  $("expMarginColorHex").textContent = $("expMarginColor").value.toLowerCase();
+  drawExport(); saveExportPrefs();
+});
 
 const WM_IMAGE_MAX_BYTES = 8 * 1024 * 1024;  // 8MB — base64化してJSON本文に載せるための目安上限
 $("expWmImgFile").addEventListener("change", () => {
@@ -2774,6 +2991,11 @@ function buildFramePayload() {
   const width = expFrameRequestedWidth();
   if (!(width > 0)) return null;
   return {color: expFrameColor(), width};
+}
+function buildMarginPayload() {
+  const width = expMarginRequestedWidth();
+  if (!(width > 0)) return null;
+  return {color: expMarginColor(), width};
 }
 
 function buildWatermarkPayload() {
@@ -2807,6 +3029,7 @@ $("expGo").onclick = async () => {
     quality: +$("expQ").value,
     max_edge: getExpMaxEdge(),
     frame: buildFramePayload(),
+    margin: buildMarginPayload(),
   };
   const mib = +$("expTargetMib").value;
   if (body.format !== "png" && mib > 0) body.target_mib = mib;
@@ -2837,7 +3060,7 @@ $("expGo").onclick = async () => {
       const status = $("expRegionStatus");
       if (!status.textContent) {
         status.textContent = recorded === "touch"
-          ? "同じ範囲なので、縁を更新して新しい順に上げました"
+          ? "同じ範囲なので、縁と下の余白を更新して新しい順に上げました"
           : recorded === "skip"
             ? "ロックしてある同じ範囲なので、新しい記録は足していません"
             : "この書き出しを記録しました";

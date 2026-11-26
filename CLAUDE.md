@@ -316,6 +316,28 @@ dialog then `POST`s the same JSON as `/photos/{id}/export` to
 expire after 30 minutes. Do not insert a `photos` row and do not set `exported_at`.
 The preview response is `Cache-Control: no-store` (the token is not a content hash).
 
+**Export frame and bottom margin are applied after the crop.** `export_photo`
+order is crop, resize, watermark on the photo, a blank band under the photo,
+then `ImageOps.expand` for the frame. API fields are `frame` and `margin`,
+each `{width, color}` or null. Width 0 is off. Colors are independent
+(`#RRGGBB`, stored lowercase; omitted color is `#ffffff`). Thickness is 1–400 px.
+When `max_edge` is set, that number is the final file long edge including both.
+With no `max_edge` the file grows. The frame is still capped at half the short
+side of the resized photo. If both do not fit, reduce the margin first, then
+the frame. `export_layout` in `okudana/export.py` and `exportLayout` in
+`index.html` must stay the same, including Python's half-to-even `round`. A
+margin request of 0 stays on `framed_content_size`. The preview draws the bands
+outside the crop and they are not hit targets. Canvas inset uses the whole photo,
+so dragging the crop does not move the picture. The second size line says
+枠含む出力 when a frame is in the file, and 余白含む出力 when only the margin is.
+In the UI, 枠 means a crop slot and 縁 means this mat. Status text uses 縁 and
+下の余白. Schema v12 stores the requested width and color on
+`photo_export_regions` (`frame_width` / `frame_color`, `margin_width` /
+`margin_color`). 0 and `''` mean off. Old rows are off and recall turns that
+piece off. Matching a crop ignores the frame and the margin. A same-crop
+re-export updates both, keeps the memo, and does not call `update_fts`. Do not
+put the colors into FTS.
+
 **Docker packaging** (`Dockerfile` + `docker-compose.yml`, see [docs/docker.md](docs/docker.md) for
 the full rationale and troubleshooting): one `Dockerfile`, `ARG VARIANT=cpu|cuda` selects the base
 image and whether `requirements-gpu.txt` gets layered on top of `requirements.txt`. Model download

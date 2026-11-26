@@ -149,6 +149,8 @@ erDiagram
         int locked "1写真につき1枠。自動記録では上書きしない"
         int frame_width "各辺の指定px。0は縁なし"
         text frame_color "#rrggbb。縁なしは空"
+        int margin_width "下余白の指定px。0はなし。縁の内側"
+        text margin_color "#rrggbb。なしは空"
         text updated_at "自動記録が古い枠を選ぶ時刻。メモ更新では動かない"
     }
 ```
@@ -172,7 +174,10 @@ erDiagram
 | v8 | photo_palette 追加（カラーパレット。最大5色の hex と割合。印象文は保存しない。手順は [palette.md](palette.md)） |
 | v9 | photo_export_regions 追加（写真ごとの切り出し枠。最大3。メモ付き。ブラウザの直前の枠とは別。メモは保存時にその写真の全文索引へ入れる。ML の再抽出はしない） |
 | v10 | photo_export_regions.locked 追加（1写真につき1枠。自動記録で上書きしない）。app_settings.export_region_auto（既定オン。書き出し成功時に最新3件へ残す。画像全体は対象外） |
-| v11 | photo_export_regions.frame_width / frame_color 追加（縁の太さと色。既存行は縁なし。同じ切り出しの再記録では縁だけ更新し、メモは残す） |
+| v11 | photo_export_regions.frame_width / frame_color 追加（縁の太さと色。既存行は縁なし） |
+| v12 | photo_export_regions.margin_width / margin_color 追加（写真の下、縁の内側の余白。既存行は余白なし）。同じ切り出しの再記録では縁と余白を更新し、メモは残す。全文索引は動かさない |
+
+`frame_width` と `margin_width` は、ファイル上で短辺や長辺に合わせて縮んだあとの太さではなく、画面で指定した px を保存する。0 と空文字はその装飾なし。
 
 ER 図との差分に気づいたら schema.sql を正としてください。
 

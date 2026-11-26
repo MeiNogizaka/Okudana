@@ -223,6 +223,23 @@ def _migrate(db: sqlite3.Connection) -> None:
                 )
         db.execute("UPDATE schema_meta SET value='11' WHERE key='schema_version'")
         db.commit()
+        version = 11
+    if version and version < 12:
+        # v11 → v12: 切り出し記録に下余白。既存行は余白なし（幅 0）。
+        if _has(db, "photo_export_regions"):
+            cols = [r["name"] for r in db.execute("PRAGMA table_info(photo_export_regions)")]
+            if "margin_width" not in cols:
+                db.execute(
+                    "ALTER TABLE photo_export_regions ADD COLUMN margin_width "
+                    "INTEGER NOT NULL DEFAULT 0"
+                )
+            if "margin_color" not in cols:
+                db.execute(
+                    "ALTER TABLE photo_export_regions ADD COLUMN margin_color "
+                    "TEXT NOT NULL DEFAULT ''"
+                )
+        db.execute("UPDATE schema_meta SET value='12' WHERE key='schema_version'")
+        db.commit()
 
 
 def _has(db: sqlite3.Connection, table: str) -> bool:

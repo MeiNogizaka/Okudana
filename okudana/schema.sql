@@ -2,7 +2,7 @@
 -- M1 では embedding/FTS/検出系テーブルも作成しておく（M2 以降で使用）
 
 CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT);
-INSERT OR IGNORE INTO schema_meta VALUES ('schema_version', '11');
+INSERT OR IGNORE INTO schema_meta VALUES ('schema_version', '12');
 
 -- アプリ設定 (key-value)。既定値はここで播種し、変更は PATCH /api/settings
 CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -149,6 +149,9 @@ CREATE TABLE IF NOT EXISTS photo_export_regions (
     -- 縁（白・黒・任意色）。0 と空文字は縁なし。幅は各辺の指定px（最大400）
     frame_width INTEGER NOT NULL DEFAULT 0,
     frame_color TEXT NOT NULL DEFAULT '',
+    -- 写真の下、縁の内側の余白。0 と空文字はなし。幅は指定px（最大400）
+    margin_width INTEGER NOT NULL DEFAULT 0,
+    margin_color TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (photo_id, slot)
 );

@@ -17,9 +17,9 @@
 | GET | `/photos/{id}/preview` | 1600px プレビュー WebP。thumb と同様、クライアント側で `?h={xxhash}` を付与する（サーバ未検証） |
 | GET | `/photos/{id}/file` | 原本ファイル |
 | POST | `/photos/{id}/open-in-explorer` | OS のファイルマネージャで場所を開く (Dockerコンテナ実行時は501) |
-| POST | `/photos/{id}/export` | 切り出し + 縁 + 透かし + メタデータ除去で書き出し。成功時 `photos.exported_at` を更新（書き出しファイル自体は永続化しない。「いつ書き出したか」のメタ情報のみ記録し、`/search` の `exported` バッジ表示に使う）。`export_region_auto` がオン（既定）で、切り出しが画像全体でないときは、その範囲と縁を写真の最新3件へ残す。同じ範囲の再書き出しは縁も更新する。応答ヘッダ `X-Okudana-Export-Region` は `insert` / `replace` / `touch` / `skip` / `full` / `off` / `nosize` / `error` |
-| GET | `/photos/{id}/export-regions` | その写真の切り出し記録（最大3枠）。`slot`・正規化 `x,y,w,h`・記録時の `src_w,src_h`・`memo`・`locked`（0/1）・`frame_width`（各辺px。0は縁なし）・`frame_color`（`#rrggbb`。縁なしは空）。開いた直後の枠（ブラウザが1つ覚える連射用）とは別 |
-| PUT | `/photos/{id}/export-regions/{slot}` | 今の範囲とメモと縁をその枠へ保存。`slot` は 1–3。`{x,y,w,h,src_w,src_h,memo,frame}`。`frame` は書き出しと同じ `{width,color}` か `null`（縁なし）。メモは200字まで。保存した写真の全文索引を更新する（再スキャンはしない）。ロック中は 409 |
+| POST | `/photos/{id}/export` | 切り出し + 下余白 + 縁 + 透かし + メタデータ除去で書き出し。成功時 `photos.exported_at` を更新（書き出しファイル自体は永続化しない。「いつ書き出したか」のメタ情報のみ記録し、`/search` の `exported` バッジ表示に使う）。`export_region_auto` がオン（既定）で、切り出しが画像全体でないときは、その範囲と縁と下余白を写真の最新3件へ残す。同じ範囲の再書き出しは縁と下余白も更新する。応答ヘッダ `X-Okudana-Export-Region` は `insert` / `replace` / `touch` / `skip` / `full` / `off` / `nosize` / `error` |
+| GET | `/photos/{id}/export-regions` | その写真の切り出し記録（最大3枠）。`slot`・正規化 `x,y,w,h`・記録時の `src_w,src_h`・`memo`・`locked`（0/1）・`frame_width`（各辺px。0は縁なし）・`frame_color`（`#rrggbb`。縁なしは空）・`margin_width`（下余白px。0はなし）・`margin_color`（`#rrggbb`。なしは空）。開いた直後の枠（ブラウザが1つ覚える連射用）とは別 |
+| PUT | `/photos/{id}/export-regions/{slot}` | 今の範囲とメモと縁と下余白をその枠へ保存。`slot` は 1–3。`{x,y,w,h,src_w,src_h,memo,frame,margin}`。`frame` と `margin` は `{width,color}` か `null`。メモは200字まで。保存した写真の全文索引を更新する（再スキャンはしない）。ロック中は 409 |
 | PATCH | `/photos/{id}/export-regions/{slot}` | `{locked: true\|false}` でロックを付け外し（1写真1件。付けると他の枠のロックは外れる）。`{memo}` はその枠のメモだけを変える（枠の時刻は動かさない）。枠が無いときは 404 |
 | DELETE | `/photos/{id}/export-regions/{slot}` | その枠を削除し、メモを全文索引から外す。ロック中は 409 |
 | POST | `/export/external` | ライブラリ外の画像を一時受け取り（multipart の `file`）。索引にも `data/` にも残さない。応答は `{token, width, height, name}` |
@@ -246,7 +246,8 @@
   "strip_metadata": true,   // true = EXIF 全除去 (GPS・機材シリアル含む)。旧名 strip_gps も受理
   "format": "png", "quality": 95, "max_edge": null,         // 既定: PNG・原寸
   "target_mib": null,                                       // 任意。JPEG/WebP のみ
-  "frame": { "width": 48, "color": "#ffffff" }              // 省略可。縁。null は縁なし
+  "frame": { "width": 48, "color": "#ffffff" },             // 省略可。縁。null は縁なし
+  "margin": { "width": 80, "color": "#ffffff" }             // 省略可。写真の下、縁の内側。null はなし
 }
 ```
 
@@ -268,12 +269,22 @@ PNG/WebP等を`FileReader`でdata URL化したもの（デコード後8MB・4000
 
 `format` は `jpeg`|`png`|`webp`（既定は実装上 `jpeg`、UI の既定は PNG）。
 `quality` は JPEG/WebP の画質（1–100）。PNG では無視する。
-`max_edge` は書き出し画像の長辺ピクセル。省略または `null` で原寸。指定時は LANCZOS で
-長辺がちょうどその値になるよう拡大または縮小する（従来は縮小のみだった）。
-許容範囲は 1–16384（`export.MAX_EDGE_LIMIT`）。原寸出力にはこの上限は適用しない。
-`frame` は切り出しと長辺のあとに足す縁。`width` は各辺のピクセル（1–400）、
-`color` は `#RRGGBB`。省略、`null`、幅 0 は縁なし。長辺を指定しているときは、
-縁を含んだファイルの長辺がその値になる。太さは中の写真の短辺の半分まで縮む。
+`max_edge` は書き出しファイルの長辺ピクセル。省略または `null` で原寸。指定時は LANCZOS で
+その長さになるよう拡大または縮小する（従来は縮小のみだった）。縁や下余白があるときは、
+それらを含んだファイルの長辺がその値になる。許容範囲は 1–16384（`export.MAX_EDGE_LIMIT`）。
+原寸出力にはこの上限は適用しない。
+手順は、切り出し、拡大縮小、透かし、下余白、縁。透かしは写真に載せる。
+`frame` は写真の四辺に足す縁。`width` は各辺 1–400。`color` は `#RRGGBB`（省略時は
+`#ffffff`。記録するときは小文字）。省略、`null`、幅 0 は縁なし。オブジェクトでない、
+幅が整数でない、範囲外、色の形式が違うときは 422。長辺を指定しているときは、縁を含んだ
+ファイルの長辺がその値になる。原寸のときは縁の分だけファイルが大きくなる。太さは中の写真の
+短辺の半分まで縮む。切り出し記録に残すのは、縮んだあとの太さではなく指定した幅。
+`margin` は写真の下、縁の内側に足す余白。`width` は 1–400。色は縁と別にでき、省略時は
+`#ffffff`。省略、`null`、幅 0 は余白なし。不正な値は `frame` と同じく 422（項目名は
+`margin.width` / `margin.color`）。長辺を指定しているときは余白もその長さに含まれる。
+原寸のときは余白の分だけファイルが大きくなる。入りきらないときは余白を先に縮め、次に縁を縮める。
+切り出しの位置が同じなら、縁と余白が違っても同じ記録とみなす。再書き出しではメモを残して
+縁と余白と時刻を更新し、全文索引は動かさない。手動の記録（PUT）はメモを含めて全文索引を更新する。
 `target_mib` は出力ファイルをそのサイズ**以下**に収めるための目安（1 MiB = 1048576 バイト、
 0 より大きく 100 以下）。JPEG/WebP のみ。quality を二分探索して、指定バイト数以下で
 最も高画質な結果を返す。quality=1 でも超える場合はその結果を返す。PNG では 422。
