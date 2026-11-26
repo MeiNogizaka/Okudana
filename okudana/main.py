@@ -499,7 +499,7 @@ def export_options():
 
 def _parse_export_request(body: dict) -> dict:
     """写真書き出しと、ライブラリ外の書き出しで共通のパラメータ検証。"""
-    from .export import MAX_EDGE_LIMIT
+    from .export import MAX_EDGE_LIMIT, ExportRequestError, parse_frame
     fmt = body.get("format", "jpeg")
     if fmt not in ("jpeg", "png", "webp"):
         raise HTTPException(422, "format must be jpeg|png|webp")
@@ -529,6 +529,10 @@ def _parse_export_request(body: dict) -> dict:
         if not (0 < target_mib <= 100):
             raise HTTPException(422, "target_mib must be in (0, 100]")
         target_bytes = int(target_mib * 1024 * 1024)  # 1 MiB = 1048576 バイト
+    try:
+        frame = parse_frame(body.get("frame"))
+    except ExportRequestError as ex:
+        raise HTTPException(422, str(ex))
     return {
         "crop": body.get("crop"),
         "watermark": body.get("watermark"),
@@ -538,6 +542,7 @@ def _parse_export_request(body: dict) -> dict:
         "quality": quality,
         "max_edge": max_edge,
         "target_bytes": target_bytes,
+        "frame": frame,
     }
 
 

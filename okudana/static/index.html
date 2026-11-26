@@ -818,6 +818,27 @@
       </div>
       <p class="lbl">プライバシー</p>
       <label><input id="expGps" type="checkbox" checked> GPS・機材情報を除去</label>
+      <p class="lbl">枠</p>
+      <div style="display:flex; gap:6px; margin-bottom:6px" id="expFrameMode">
+        <button class="ghost" data-m="none" type="button" style="font-size:11px;padding:3px 8px;flex:1">なし</button>
+        <button class="ghost" data-m="white" type="button" style="font-size:11px;padding:3px 8px;flex:1">白</button>
+        <button class="ghost" data-m="black" type="button" style="font-size:11px;padding:3px 8px;flex:1">黒</button>
+        <button class="ghost" data-m="color" type="button" style="font-size:11px;padding:3px 8px;flex:1">色</button>
+      </div>
+      <div id="expFrameControls" hidden>
+        <div id="expFrameColorRow" style="display:none; gap:6px; align-items:center; margin-bottom:6px">
+          <input id="expFrameColor" type="color" value="#336699" aria-label="枠の色" style="width:28px; height:22px; padding:0; margin:0; border:1px solid var(--line); background:transparent">
+          <span id="expFrameColorHex" style="font:11px ui-monospace,Consolas,monospace">#336699</span>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center; font-size:11px; color:var(--ink2); margin-bottom:4px">
+          <span style="flex:none">太さ</span>
+          <input id="expFrameWidth" type="range" min="1" max="400" step="1" value="48" aria-label="枠の太さ" style="flex:1">
+          <input id="expFrameWidthNum" type="number" min="1" max="400" value="48" aria-label="枠の太さ（px）" style="width:52px; margin:0; padding:3px 4px; font-size:11px">
+          <span>px</span>
+        </div>
+        <p id="expFrameReadout" style="font-size:10.5px; color:var(--ink2); margin:0 0 4px"></p>
+        <p style="font-size:10.5px; color:var(--ink2); margin:0 0 6px">長辺を指定したときは、枠を含めてその長さになります。</p>
+      </div>
       <p class="lbl">出力</p>
       <div style="display:grid; grid-template-columns:44px 1fr; gap:4px 8px; align-items:center">
         <span>形式</span>
@@ -828,7 +849,7 @@
         </select>
         <span>長辺</span>
         <span style="display:flex; gap:4px; align-items:center">
-          <select id="expEdge" style="flex:1; min-width:0; background:var(--paper); color:var(--ink); border:1px solid var(--line); border-radius:5px; padding:4px">
+          <select id="expEdge" title="枠を付けるときは、枠を含んだファイルの長辺" style="flex:1; min-width:0; background:var(--paper); color:var(--ink); border:1px solid var(--line); border-radius:5px; padding:4px">
             <option value="" selected>原寸</option>
             <option value="4096">4096px</option>
             <option value="2048">2048px</option><option value="1600">1600px</option>
@@ -1603,6 +1624,7 @@ $("tagInput").addEventListener("input", async e => {
 const exp = {
   photo: null, img: null, aspect: null, box: null, drag: null, aspectFlip: false,
   externalToken: null, regionRecall: false, suspendPrefs: false, boxEdited: false,
+  frameMode: "none",
 };
 const CROP_MIN = 0.03;  // 枠の最小サイズ（正規化）
 const CROP_HANDLES = [
@@ -1634,6 +1656,7 @@ const EXPORT_DEFAULTS = {
   wm: "", wmPos: "bottom-right", wmFont: "gothic", wmOp: 0.6, wmSize: 2.5,
   wmMode: "text", wmImgSize: 20,
   gps: true, format: "png", edge: "", edgePx: "", quality: 95, targetMib: "",
+  frameMode: "none", frameColor: "#336699", frameWidth: 48,
   boxPx: null,  // {x, y, w, h, origW, origH} 原寸px。nullなら全体 (未指定/前回リセット済み)
 };
 function loadExportPrefs() {
@@ -1709,6 +1732,8 @@ function saveExportPrefs() {
     gps: $("expGps").checked,
     format: $("expFormat").value, edge: $("expEdge").value, edgePx: $("expEdgePx").value,
     quality: +$("expQ").value, targetMib: $("expTargetMib").value,
+    frameMode: expFrameMode(), frameColor: $("expFrameColor").value,
+    frameWidth: expFrameRequestedWidth(),
     boxPx,
   }));
 }
@@ -1808,6 +1833,148 @@ function syncExpEdgePxVisibility() {
   $("expEdgePx").style.display = $("expEdge").value === "custom" ? "" : "none";
 }
 
+// 枠の太さ。export.py の FRAME_WIDTH_MAX / frameWidthFor / framed_content_size と同じ。
+// round は Python の偶数丸めに合わせる（0.5 は Math.round と結果が違う）。
+const FRAME_WIDTH_MAX = 400;
+function pythonRound(x) {
+  const floor = Math.floor(x);
+  const frac = x - floor;
+  if (frac > 0.5) return floor + 1;
+  if (frac < 0.5) return floor;
+  return (floor % 2 === 0) ? floor : floor + 1;
+}
+function frameWidthFor(srcW, srcH, maxEdge, requested) {
+  if (!(requested > 0) || !(srcW > 0) || !(srcH > 0)) return 0;
+  let f = Math.min(FRAME_WIDTH_MAX, Math.round(requested));
+  const long = Math.max(srcW, srcH);
+  const short = Math.min(srcW, srcH);
+  if (maxEdge) {
+    f = Math.min(f, Math.floor((maxEdge - 1) / 2));
+    while (f > 0) {
+      const photoLong = maxEdge - 2 * f;
+      const photoShort = Math.max(1, pythonRound(short * photoLong / long));
+      if (2 * f <= photoShort) break;
+      f -= 1;
+    }
+    return f;
+  }
+  return Math.min(f, Math.floor(short / 2));
+}
+function framedContentSize(srcW, srcH, maxEdge, requested) {
+  const f = frameWidthFor(srcW, srcH, maxEdge, requested);
+  if (!(srcW > 0) || !(srcH > 0)) return {contentW: 0, contentH: 0, f: 0};
+  const long = Math.max(srcW, srcH);
+  if (f > 0 && maxEdge) {
+    const scale = (maxEdge - 2 * f) / long;
+    return {
+      contentW: Math.max(1, pythonRound(srcW * scale)),
+      contentH: Math.max(1, pythonRound(srcH * scale)),
+      f,
+    };
+  }
+  if (maxEdge && long !== maxEdge) {
+    const scale = maxEdge / long;
+    return {
+      contentW: Math.max(1, Math.round(srcW * scale)),
+      contentH: Math.max(1, Math.round(srcH * scale)),
+      f: 0,
+    };
+  }
+  return {contentW: srcW, contentH: srcH, f};
+}
+function expFrameMode() {
+  return exp.frameMode === "white" || exp.frameMode === "black" || exp.frameMode === "color"
+    ? exp.frameMode : "none";
+}
+function expFrameRequestedWidth() {
+  const n = Math.round(+$("expFrameWidth").value);
+  if (!(n >= 1)) return 48;
+  return Math.min(FRAME_WIDTH_MAX, n);
+}
+function expFrameColor() {
+  if (exp.frameMode === "white") return "#ffffff";
+  if (exp.frameMode === "black") return "#000000";
+  const c = String($("expFrameColor").value || "").toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(c) ? c : "#336699";
+}
+function expOutputMetrics() {
+  const origW = exp.photo?.width || exp.img?.naturalWidth || 0;
+  const origH = exp.photo?.height || exp.img?.naturalHeight || 0;
+  if (!exp.box || !(origW > 0) || !(origH > 0)) return null;
+  const srcW = Math.round(exp.box.w * origW), srcH = Math.round(exp.box.h * origH);
+  const maxEdge = getExpMaxEdge();
+  const requested = expFrameMode() === "none" ? 0 : expFrameRequestedWidth();
+  const sized = framedContentSize(srcW, srcH, maxEdge, requested);
+  return {
+    srcW, srcH, origW, origH, maxEdge, requested,
+    ...sized,
+    outW: sized.contentW + 2 * sized.f,
+    outH: sized.contentH + 2 * sized.f,
+  };
+}
+function updateFrameReadout(metrics) {
+  const el = $("expFrameReadout");
+  if (!el) return;
+  if (expFrameMode() === "none") { el.textContent = ""; return; }
+  const requested = expFrameRequestedWidth();
+  metrics = metrics || expOutputMetrics();
+  if (!metrics || !(metrics.srcW > 0)) {
+    el.textContent = `各辺 ${requested}px`;
+    return;
+  }
+  if (metrics.f <= 0) {
+    el.textContent = "この長辺には枠が入りません";
+    return;
+  }
+  const short = Math.min(metrics.contentW, metrics.contentH);
+  const pct = short > 0 ? (metrics.f / short * 100) : 0;
+  const pctText = pct >= 10 ? pct.toFixed(0) : pct.toFixed(1);
+  el.textContent = metrics.f !== requested
+    ? `この写真では各辺 ${metrics.f}px（短辺の ${pctText}%）`
+    : `各辺 ${metrics.f}px（短辺の ${pctText}%）`;
+}
+function setFrameWidth(n, save) {
+  n = Math.round(+n);
+  if (!(n >= 1)) n = 48;
+  n = Math.min(FRAME_WIDTH_MAX, Math.max(1, n));
+  $("expFrameWidth").value = String(n);
+  $("expFrameWidthNum").value = String(n);
+  if (save) { drawExport(); saveExportPrefs(); }
+  else updateFrameReadout();
+}
+function setFrameMode(mode) {
+  exp.frameMode = mode === "white" || mode === "black" || mode === "color" ? mode : "none";
+  $("expFrameControls").hidden = exp.frameMode === "none";
+  $("expFrameColorRow").style.display = exp.frameMode === "color" ? "flex" : "none";
+  for (const b of $("expFrameMode").children) {
+    b.classList.toggle("ghost", b.dataset.m !== exp.frameMode);
+  }
+  updateFrameReadout();
+}
+function frameInk(hex) {
+  const n = Number.parseInt(String(hex).slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const y = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return y > 0.6 ? "rgba(0,0,0,.85)" : "#fff";
+}
+// 切り出しを端まで寄せても枠が見えるよう、写真の周囲に余白を残す。
+// 余白は写真全体で決め、ドラッグ中に写真がずれないようにする。
+function expFramePad(canvasW, canvasH, iw, ih) {
+  const requested = expFrameMode() === "none" ? 0 : expFrameRequestedWidth();
+  if (!(requested > 0) || !(iw > 0) || !(ih > 0)) return 0;
+  const origW = exp.photo?.width || iw;
+  const origH = exp.photo?.height || ih;
+  const maxEdge = getExpMaxEdge();
+  const sized = framedContentSize(origW, origH, maxEdge, requested);
+  if (!(sized.f > 0)) return 0;
+  const outW = sized.contentW + 2 * sized.f;
+  const outH = sized.contentH + 2 * sized.f;
+  const pW = sized.f * canvasW / outW;
+  const photoH = ih * (canvasW - 2 * pW) / iw;
+  if (photoH <= canvasH - 2 * pW + 0.5) return Math.max(0, pW);
+  return Math.max(0, sized.f * canvasH / outH);
+}
+
 async function openExport(photo) {
   if (exp.externalToken && exp.externalToken !== photo.externalToken) {
     discardExternalExport(exp.externalToken);
@@ -1863,6 +2030,11 @@ async function openExport(photo) {
     }
     $("expQ").value = prefs.quality;
     $("expTargetMib").value = prefs.targetMib;
+    const frameColor = /^#[0-9A-Fa-f]{6}$/.test(prefs.frameColor || "") ? prefs.frameColor : "#336699";
+    $("expFrameColor").value = frameColor;
+    $("expFrameColorHex").textContent = frameColor.toLowerCase();
+    setFrameWidth(prefs.frameWidth, false);
+    setFrameMode(prefs.frameMode);
     syncExpEdgePxVisibility();
     updateExpFormatUI();
     if (placed?.how === "center") {
@@ -2159,7 +2331,10 @@ window.addEventListener("resize", () => {
 function expImageRect() {
   const c = $("expCanvas");
   const iw = exp.img.naturalWidth, ih = exp.img.naturalHeight;
-  const scale = Math.min(c.width / iw, c.height / ih);
+  const pad = expFramePad(c.width, c.height, iw, ih);
+  const availW = Math.max(1, c.width - 2 * pad);
+  const availH = Math.max(1, c.height - 2 * pad);
+  const scale = Math.min(availW / iw, availH / ih);
   const dw = iw * scale, dh = ih * scale;
   return { dx: (c.width - dw) / 2, dy: (c.height - dh) / 2, dw, dh };
 }
@@ -2193,35 +2368,55 @@ function drawExport() {
   ctx.fillRect(0, box.y, box.x, box.h);
   ctx.fillRect(box.x + box.w, box.y, c.width - box.x - box.w, box.h);
 
-  ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5;
-  ctx.strokeRect(box.x + 0.75, box.y + 0.75, Math.max(0, box.w - 1.5), Math.max(0, box.h - 1.5));
+  // 枠は切り出しが決まってから外側に足す。帯はドラッグの対象にしない。
+  // 太さは、画面上の切り出し幅と出力される中の写真の幅の比に合わせる。
+  const metrics = expOutputMetrics();
+  let frameOn = false;
+  if (metrics && metrics.f > 0 && metrics.contentW > 0 && box.w > 0 && box.h > 0) {
+    frameOn = true;
+    const t = metrics.f * box.w / metrics.contentW;
+    const color = expFrameColor();
+    const x0 = box.x - t, y0 = box.y - t;
+    const fw = box.w + 2 * t, fh = box.h + 2 * t;
+    ctx.fillStyle = color;
+    ctx.fillRect(x0, y0, fw, t);
+    ctx.fillRect(x0, y0 + fh - t, fw, t);
+    ctx.fillRect(x0, y0 + t, t, Math.max(0, fh - 2 * t));
+    ctx.fillRect(x0 + fw - t, y0 + t, t, Math.max(0, fh - 2 * t));
+    ctx.strokeStyle = frameInk(color);
+    ctx.lineWidth = 1;
+    ctx.strokeRect(box.x + 0.5, box.y + 0.5, Math.max(0, box.w - 1), Math.max(0, box.h - 1));
+  } else {
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5;
+    ctx.strokeRect(box.x + 0.75, box.y + 0.75, Math.max(0, box.w - 1.5), Math.max(0, box.h - 1.5));
+  }
   ctx.strokeStyle = "rgba(255,255,255,.5)"; ctx.lineWidth = 1;
   for (const f of [1/3, 2/3]) {
     ctx.beginPath(); ctx.moveTo(box.x + box.w*f, box.y); ctx.lineTo(box.x + box.w*f, box.y + box.h); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(box.x, box.y + box.h*f); ctx.lineTo(box.x + box.w, box.y + box.h*f); ctx.stroke();
   }
   ctx.fillStyle = "#fff";
+  const ink = frameOn ? frameInk(expFrameColor()) : null;
   for (const h of expActiveHandles()) {
     const hx = box.x + h.fx * box.w, hy = box.y + h.fy * box.h;
     ctx.fillRect(hx - 4, hy - 4, 8, 8);
+    if (ink) {
+      ctx.strokeStyle = ink; ctx.lineWidth = 1;
+      ctx.strokeRect(hx - 4.5, hy - 4.5, 9, 9);
+    }
   }
 
   // 切り出しサイズ (px) はキャンバス上ではなく枠下の #expDimLabel に出す。
   // 全画面切り出しだと枠の内側に重なり写真を隠すため。数値の意味は従来どおり:
   // プレビュー画像 (1600px上限) ではなく原本解像度を基準にし、長辺指定の
-  // 拡大・縮小も export.py の _resize_long_edge() と同じ計算で最終pxを表示する。
-  const origW = exp.photo.width || exp.img.naturalWidth;
-  const origH = exp.photo.height || exp.img.naturalHeight;
-  const srcW = Math.round(exp.box.w * origW), srcH = Math.round(exp.box.h * origH);
-  let outW = srcW, outH = srcH;
-  const maxEdge = getExpMaxEdge();
-  if (maxEdge && Math.max(srcW, srcH) > 0 && Math.max(srcW, srcH) !== maxEdge) {
-    const s = maxEdge / Math.max(srcW, srcH);
-    outW = Math.max(1, Math.round(srcW * s)); outH = Math.max(1, Math.round(srcH * s));
+  // 拡大・縮小も export.py の framed_content_size() と同じ計算で最終pxを表示する。
+  // 枠があるときは出力に枠を含める。長辺を指定しているとその長辺は枠込み。
+  // 原寸と出力が同じピクセルでも両方の行を残す。
+  if (metrics) {
+    $("expDimLabel").textContent =
+      `原寸 ${metrics.srcW} × ${metrics.srcH}px\n出力 ${metrics.outW} × ${metrics.outH}px`;
+    updateFrameReadout(metrics);
   }
-  $("expDimLabel").textContent = (outW === srcW && outH === srcH)
-    ? `原寸 ${srcW} × ${srcH}px`
-    : `原寸 ${srcW} × ${srcH}px\n出力 ${outW} × ${outH}px`;
 
   if (box.w <= 10 || box.h <= 10) return;
   const pos = exp.wmPos || "bottom-right";
@@ -2493,6 +2688,24 @@ $("expWmMode").addEventListener("click", e => {
   drawExport(); saveExportPrefs();
 });
 
+$("expFrameMode").addEventListener("click", e => {
+  const b = e.target.closest("[data-m]");
+  if (!b) return;
+  setFrameMode(b.dataset.m);
+  drawExport(); saveExportPrefs();
+});
+$("expFrameWidth").addEventListener("input", () => {
+  $("expFrameWidthNum").value = $("expFrameWidth").value;
+  drawExport(); saveExportPrefs();
+});
+$("expFrameWidthNum").addEventListener("change", () => {
+  setFrameWidth(+$("expFrameWidthNum").value, true);
+});
+$("expFrameColor").addEventListener("input", () => {
+  $("expFrameColorHex").textContent = $("expFrameColor").value.toLowerCase();
+  drawExport(); saveExportPrefs();
+});
+
 const WM_IMAGE_MAX_BYTES = 8 * 1024 * 1024;  // 8MB — base64化してJSON本文に載せるための目安上限
 $("expWmImgFile").addEventListener("change", () => {
   const file = $("expWmImgFile").files[0];
@@ -2513,6 +2726,13 @@ $("expWmImgFile").addEventListener("change", () => {
   };
   reader.readAsDataURL(file);
 });
+
+function buildFramePayload() {
+  if (expFrameMode() === "none") return null;
+  const width = expFrameRequestedWidth();
+  if (!(width > 0)) return null;
+  return {color: expFrameColor(), width};
+}
 
 function buildWatermarkPayload() {
   if (exp.wmMode === "none") return null;
@@ -2544,6 +2764,7 @@ $("expGo").onclick = async () => {
     format: $("expFormat").value,
     quality: +$("expQ").value,
     max_edge: getExpMaxEdge(),
+    frame: buildFramePayload(),
   };
   const mib = +$("expTargetMib").value;
   if (body.format !== "png" && mib > 0) body.target_mib = mib;

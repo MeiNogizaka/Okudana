@@ -1,4 +1,4 @@
-"""書き出し (M4): 切り出し + 透かし + GPS/機材情報の除去。原本は変更しない。"""
+"""書き出し (M4): 切り出し + 枠 + 透かし + GPS/機材情報の除去。原本は変更しない。"""
 from __future__ import annotations
 
 import base64
@@ -68,6 +68,87 @@ def _load_font(size: int, font_key: str | None = None) -> ImageFont.FreeTypeFont
 # 原寸 (max_edge=None) はこの制限の対象外
 MAX_EDGE_LIMIT = 16384
 
+# 枠の太さ（各辺、書き出し画像のピクセル）。index.html の FRAME_WIDTH_MAX と同じ。
+FRAME_WIDTH_MAX = 400
+
+
+class ExportRequestError(ValueError):
+    """書き出しパラメータが不正。API では 422 にする。"""
+
+
+def parse_frame(raw) -> dict | None:
+    """{"width": px, "color": "#RRGGBB"} を検証する。無し、または幅 0 は None。"""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ExportRequestError("frame must be an object")
+    width = raw.get("width", 0)
+    if isinstance(width, bool) or isinstance(width, float) and not width.is_integer():
+        raise ExportRequestError("frame.width must be an integer")
+    if not isinstance(width, (int, float)):
+        raise ExportRequestError("frame.width must be an integer")
+    width = int(width)
+    if not (0 <= width <= FRAME_WIDTH_MAX):
+        raise ExportRequestError(f"frame.width must be 0..{FRAME_WIDTH_MAX}")
+    if width == 0:
+        return None
+    color = raw.get("color") or "#ffffff"
+    if not isinstance(color, str) or not re.fullmatch(r"#[0-9A-Fa-f]{6}", color):
+        raise ExportRequestError("frame.color must be #RRGGBB")
+    return {"width": width, "color": "#" + color[1:].lower()}
+
+
+def frame_width_for(
+    src_w: int, src_h: int, max_edge: int | None, requested: int,
+) -> int:
+    """各辺の枠幅。0 は枠なし。
+
+    index.html の frameWidthFor と同じ手順（round は偶数丸め）。
+    長辺指定があるときは、枠を足したあとの長辺が max_edge になる範囲で、
+    中の写真の短辺の半分まで。原寸のときは切り出し後の短辺の半分まで。
+    """
+    if requested <= 0 or src_w <= 0 or src_h <= 0:
+        return 0
+    f = min(FRAME_WIDTH_MAX, int(requested))
+    long = max(src_w, src_h)
+    short = min(src_w, src_h)
+    if max_edge:
+        f = min(f, (int(max_edge) - 1) // 2)
+        while f > 0:
+            photo_long = int(max_edge) - 2 * f
+            photo_short = max(1, round(short * photo_long / long))
+            if 2 * f <= photo_short:
+                break
+            f -= 1
+        return f
+    return min(f, short // 2)
+
+
+def framed_content_size(
+    src_w: int, src_h: int, max_edge: int | None, requested: int,
+) -> tuple[int, int, int]:
+    """枠を足す前の写真サイズと、実際に使う枠幅。
+
+    戻り値は (content_w, content_h, frame_w)。frame_w > 0 かつ max_edge
+    があるとき、ファイルの長辺は content の長辺 + 2*frame_w = max_edge。
+    """
+    f = frame_width_for(src_w, src_h, max_edge, requested)
+    if src_w <= 0 or src_h <= 0:
+        return 0, 0, 0
+    long = max(src_w, src_h)
+    if f > 0 and max_edge:
+        scale = (int(max_edge) - 2 * f) / long
+        return max(1, round(src_w * scale)), max(1, round(src_h * scale)), f
+    if max_edge and long != max_edge:
+        scale = int(max_edge) / long
+        return max(1, round(src_w * scale)), max(1, round(src_h * scale)), 0
+    return src_w, src_h, f
+
+
+def _frame_rgb(color: str) -> tuple[int, int, int]:
+    n = int(color[1:], 16)
+    return (n >> 16) & 255, (n >> 8) & 255, n & 255
+
 
 def _resize_long_edge(img: Image.Image, max_edge: int) -> Image.Image:
     """長辺を max_edge px に合わせる (不足なら拡大、超過なら縮小)。LANCZOS。"""
@@ -125,6 +206,7 @@ def export_photo(
     quality: int = 92,
     max_edge: int | None = 2048,
     target_bytes: int | None = None,   # JPEG/WebP のみ。このバイト数以下になるよう quality を調整
+    frame: dict | None = None,         # {width, color}。幅 0 / None は枠なし
 ) -> tuple[bytes, str]:
     # with で開き、画素データを読み切ってから閉じる (開いたままだと大量書き出し時に
     # FD を消費し続ける。scanner.py の extract_one と同じ理由)。RAWはscanner.pyと
@@ -150,11 +232,21 @@ def export_photo(
         if box[2] - box[0] >= 16 and box[3] - box[1] >= 16:
             img = img.crop(box)
 
-    if max_edge:
+    # 枠は切り出しの後。長辺を指定しているときは、枠を含んだファイルの長辺が
+    # その数字になるよう、先に中の写真だけを縮める（または拡げる）。
+    # 透かしは枠の内側の写真に載せる。枠の色は最後に外側へ足す。
+    requested = int(frame["width"]) if frame else 0
+    frame_w = framed_content_size(img.width, img.height, max_edge, requested)[2]
+    if frame_w > 0 and max_edge:
+        img = _resize_long_edge(img, max_edge - 2 * frame_w)
+    elif max_edge:
         img = _resize_long_edge(img, max_edge)
 
     if watermark and (watermark.get("text") or watermark.get("image_data_url")):
         img = _draw_watermark(img, watermark)
+
+    if frame_w > 0:
+        img = ImageOps.expand(img, border=frame_w, fill=_frame_rgb(frame["color"]))
 
     # EXIF: 既定は全除去 (GPS + シリアル等を確実に落とす)。
     # strip_metadata=False のときは元 EXIF をそのまま引き継ぐ (全部残る)
