@@ -336,6 +336,9 @@
     flex:1; min-width:0; font-size:10.5px; color:var(--ink2);
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
+  #expRegionList .exp-region-frame {
+    flex:none; font-size:10.5px; color:var(--ink); white-space:nowrap;
+  }
   #expRegionList .exp-region-count {
     flex:none; font-size:10.5px; color:var(--ink2); font-variant-numeric:tabular-nums;
   }
@@ -730,7 +733,7 @@
       <div id="expRegions" hidden style="margin-top:10px">
         <p class="lbl" style="margin-bottom:4px">この写真の切り出し</p>
         <p id="expRegionHint" style="font-size:10.5px; color:var(--ink2); margin:0 0 6px">
-          開いた直後の枠は、連射用にブラウザが覚えている直前の範囲です。書き出すと、この写真の新しい順に3件まで残ります。ロックした1件は上書きされません。メモは検索に含まれます。
+          開いた直後の枠は、連射用にブラウザが覚えている直前の範囲です。書き出すと、この写真の新しい順に3件まで残ります。縁の色と太さも一緒に残り、呼び出すと戻ります。ロックした1件は上書きされません。メモは検索に含まれます。
         </p>
         <div id="expRegionList" style="display:grid; gap:8px">
           <div class="exp-region-row" data-slot="1">
@@ -741,6 +744,7 @@
             </div>
             <div class="exp-region-sub">
               <span class="exp-region-when"></span>
+              <span class="exp-region-frame"></span>
               <button type="button" class="ghost exp-region-save" style="font-size:11px;padding:3px 8px">記録</button>
               <button type="button" class="ghost exp-region-load" style="font-size:11px;padding:3px 8px" disabled>呼出</button>
               <button type="button" class="ghost exp-region-lock" style="font-size:11px;padding:3px 8px" disabled>ロック</button>
@@ -755,6 +759,7 @@
             </div>
             <div class="exp-region-sub">
               <span class="exp-region-when"></span>
+              <span class="exp-region-frame"></span>
               <button type="button" class="ghost exp-region-save" style="font-size:11px;padding:3px 8px">記録</button>
               <button type="button" class="ghost exp-region-load" style="font-size:11px;padding:3px 8px" disabled>呼出</button>
               <button type="button" class="ghost exp-region-lock" style="font-size:11px;padding:3px 8px" disabled>ロック</button>
@@ -769,6 +774,7 @@
             </div>
             <div class="exp-region-sub">
               <span class="exp-region-when"></span>
+              <span class="exp-region-frame"></span>
               <button type="button" class="ghost exp-region-save" style="font-size:11px;padding:3px 8px">記録</button>
               <button type="button" class="ghost exp-region-load" style="font-size:11px;padding:3px 8px" disabled>呼出</button>
               <button type="button" class="ghost exp-region-lock" style="font-size:11px;padding:3px 8px" disabled>ロック</button>
@@ -940,8 +946,8 @@ function applyPaletteSettings(s) {
 }
 function exportRegionHintText() {
   return exportRegionAuto
-    ? "開いた直後の枠は、連射用にブラウザが覚えている直前の範囲です。書き出すと、この写真の新しい順に3件まで残ります。ロックした1件は上書きされません。メモは検索に含まれます。"
-    : "開いた直後の枠は、連射用にブラウザが覚えている直前の範囲です。自動記録はオフです。残すときは記録を押します。ロックした1件は上書きされません。メモは検索に含まれます。";
+    ? "開いた直後の枠は、連射用にブラウザが覚えている直前の範囲です。書き出すと、この写真の新しい順に3件まで残ります。縁の色と太さも一緒に残り、呼び出すと戻ります。ロックした1件は上書きされません。メモは検索に含まれます。"
+    : "開いた直後の枠は、連射用にブラウザが覚えている直前の範囲です。自動記録はオフです。残すときは記録を押します。縁の色と太さも一緒に残り、呼び出すと戻ります。ロックした1件は上書きされません。メモは検索に含まれます。";
 }
 function applyExportRegionAuto(s) {
   exportRegionAuto = s.export_region_auto !== false;
@@ -2110,6 +2116,10 @@ function showExportRegion(slot, rec) {
     when.textContent = "";
     when.title = "";
   }
+  const frameLabel = regionFrameLabel(rec);
+  const frameEl = row.querySelector(".exp-region-frame");
+  frameEl.textContent = frameLabel;
+  frameEl.title = frameLabel ? "記録した縁" : "";
   const locked = !!(rec && rec.locked);
   row.querySelector(".exp-region-load").disabled = !rec;
   row.querySelector(".exp-region-save").disabled = locked;
@@ -2121,8 +2131,34 @@ function showExportRegion(slot, rec) {
   lock.title = locked ? "ロックを外す" : "この1件を残し、自動記録で上書きしない";
   const load = row.querySelector(".exp-region-load");
   load.title = rec
-    ? `${Math.round(rec.w * rec.src_w)}×${Math.round(rec.h * rec.src_h)}`
+    ? [`${Math.round(rec.w * rec.src_w)}×${Math.round(rec.h * rec.src_h)}`, frameLabel]
+        .filter(Boolean).join(" ")
     : "";
+}
+
+function regionFrameLabel(rec) {
+  const width = +rec?.frame_width || 0;
+  const color = String(rec?.frame_color || "").toLowerCase();
+  if (!(width > 0) || !/^#[0-9a-f]{6}$/.test(color)) return "";
+  const name = color === "#ffffff" ? "白" : color === "#000000" ? "黒" : color;
+  return `${name} ${width}px`;
+}
+
+function applyRecordedFrame(rec) {
+  const width = +rec?.frame_width || 0;
+  const color = String(rec?.frame_color || "").toLowerCase();
+  if (!(width > 0) || !/^#[0-9a-f]{6}$/.test(color)) {
+    setFrameMode("none");
+    return;
+  }
+  setFrameWidth(width, false);
+  if (color === "#ffffff") setFrameMode("white");
+  else if (color === "#000000") setFrameMode("black");
+  else {
+    $("expFrameColor").value = color;
+    $("expFrameColorHex").textContent = color;
+    setFrameMode("color");
+  }
 }
 
 function orderExportRegionRows() {
@@ -2188,6 +2224,11 @@ function recallExportRegion(rec) {
     exp.box = { x: (1 - w) / 2, y: (1 - h) / 2, w, h };
     $("expRegionStatus").textContent = "解像度が違うので、同じ大きさで中央に置きました";
   }
+  applyRecordedFrame(rec);
+  const frameLabel = regionFrameLabel(rec);
+  $("expRegionStatus").textContent += frameLabel
+    ? `。縁は${frameLabel}に戻しました`
+    : "。縁は外しました";
   exp.regionRecall = true;
   drawExport();
 }
@@ -2221,6 +2262,7 @@ $("expRegionList").addEventListener("click", async (e) => {
         body: JSON.stringify({
           x: exp.box.x, y: exp.box.y, w: exp.box.w, h: exp.box.h,
           src_w: origW, src_h: origH, memo,
+          frame: buildFramePayload(),
         }),
       });
       showExportRegion(slot, saved);
@@ -2795,7 +2837,7 @@ $("expGo").onclick = async () => {
       const status = $("expRegionStatus");
       if (!status.textContent) {
         status.textContent = recorded === "touch"
-          ? "同じ範囲なので、その記録を新しい順に上げました"
+          ? "同じ範囲なので、縁を更新して新しい順に上げました"
           : recorded === "skip"
             ? "ロックしてある同じ範囲なので、新しい記録は足していません"
             : "この書き出しを記録しました";

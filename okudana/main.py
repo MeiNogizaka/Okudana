@@ -576,7 +576,7 @@ def export(photo_id: int, body: dict = Body(default={})):
         db.execute("UPDATE photos SET exported_at=datetime('now') WHERE id=?", (photo_id,))
         # 自動記録に失敗しても書き出し自体は返す。範囲の保存だけ見送る。
         try:
-            region_action = _auto_record_on_export(p, opts.get("crop"))
+            region_action = _auto_record_on_export(p, opts.get("crop"), opts.get("frame"))
         except Exception:
             log.exception("export region auto-record failed")
             db.rollback()
@@ -588,7 +588,7 @@ def export(photo_id: int, body: dict = Body(default={})):
     return resp
 
 
-def _auto_record_on_export(photo, crop) -> str:
+def _auto_record_on_export(photo, crop, frame=None) -> str:
     """設定がオンのとき、全体以外の切り出しを最新3件として残す。commit はしない。"""
     if get_setting("export_region_auto", "1") != "1":
         return "off"
@@ -598,11 +598,14 @@ def _auto_record_on_export(photo, crop) -> str:
     if not isinstance(crop, dict):
         return "full"
     try:
-        region = _parse_export_region({
+        body = {
             "x": crop.get("x", 0), "y": crop.get("y", 0),
             "w": crop.get("w", 0), "h": crop.get("h", 0),
             "src_w": src_w, "src_h": src_h, "memo": "",
-        })
+        }
+        if frame:
+            body["frame"] = frame
+        region = _parse_export_region(body)
     except HTTPException:
         return "skip"
     if region["w"] > 0.999 and region["h"] > 0.999:
@@ -628,9 +631,16 @@ def _parse_export_region(body: dict) -> dict:
     w, h = min(w, 1 - x), min(h, 1 - y)
     if w <= 0 or h <= 0:
         raise HTTPException(422, "crop is out of range")
+    from .export import ExportRequestError, parse_frame
+    try:
+        frame = parse_frame(body.get("frame"))
+    except ExportRequestError as ex:
+        raise HTTPException(422, str(ex))
     return {
         "x": x, "y": y, "w": w, "h": h, "src_w": src_w, "src_h": src_h,
         "memo": _clean_region_memo(body.get("memo")),
+        "frame_width": frame["width"] if frame else 0,
+        "frame_color": frame["color"] if frame else "",
     }
 
 
@@ -670,14 +680,18 @@ def save_export_region(photo_id: int, slot: int, body: dict = Body(...)):
             raise HTTPException(409, "ロック中です。外してから記録や削除ができます")
         db.execute(
             """INSERT INTO photo_export_regions
-                 (photo_id, slot, x, y, w, h, src_w, src_h, memo, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?, datetime('now'))
+                 (photo_id, slot, x, y, w, h, src_w, src_h, memo,
+                  frame_width, frame_color, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?, datetime('now'))
                ON CONFLICT(photo_id, slot) DO UPDATE SET
                  x=excluded.x, y=excluded.y, w=excluded.w, h=excluded.h,
                  src_w=excluded.src_w, src_h=excluded.src_h,
-                 memo=excluded.memo, updated_at=datetime('now')""",
+                 memo=excluded.memo,
+                 frame_width=excluded.frame_width, frame_color=excluded.frame_color,
+                 updated_at=datetime('now')""",
             (photo_id, slot, region["x"], region["y"], region["w"], region["h"],
-             region["src_w"], region["src_h"], region["memo"]),
+             region["src_w"], region["src_h"], region["memo"],
+             region["frame_width"], region["frame_color"]),
         )
         fts.update_fts(db, photo_id)
         db.commit()

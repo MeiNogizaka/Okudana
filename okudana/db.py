@@ -206,6 +206,23 @@ def _migrate(db: sqlite3.Connection) -> None:
             )
         db.execute("UPDATE schema_meta SET value='10' WHERE key='schema_version'")
         db.commit()
+        version = 10
+    if version and version < 11:
+        # v10 → v11: 切り出し記録に縁の色と太さ。既存行は縁なし（幅 0）。
+        if _has(db, "photo_export_regions"):
+            cols = [r["name"] for r in db.execute("PRAGMA table_info(photo_export_regions)")]
+            if "frame_width" not in cols:
+                db.execute(
+                    "ALTER TABLE photo_export_regions ADD COLUMN frame_width "
+                    "INTEGER NOT NULL DEFAULT 0"
+                )
+            if "frame_color" not in cols:
+                db.execute(
+                    "ALTER TABLE photo_export_regions ADD COLUMN frame_color "
+                    "TEXT NOT NULL DEFAULT ''"
+                )
+        db.execute("UPDATE schema_meta SET value='11' WHERE key='schema_version'")
+        db.commit()
 
 
 def _has(db: sqlite3.Connection, table: str) -> bool:
